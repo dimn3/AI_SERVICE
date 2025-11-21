@@ -99,8 +99,9 @@
                         </h3>
                         <div class="space-y-2">
                             <button hx-post="/api/ai/analyze/" hx-target="#chat-messages" hx-swap="beforeend"
-                                    hx-vals='{"query": "Проведи полную диагностику системы"}'
-                                    class="w-full bg-green-500 text-white px-3 py-3 rounded-lg hover:bg-green-600 transition-colors text-sm font-semibold text-left">
+                                hx-vals='{"query": "Проведи полную диагностику системы"}'
+                                hx-headers='{"Content-Type": "application/json"}'
+                                class="w-full bg-green-500 text-white px-3 py-3 rounded-lg hover:bg-green-600 transition-colors text-sm font-semibold text-left">
                                 <i class="fas fa-search mr-2"></i>Полная диагностика
                             </button>
                             <button hx-get="/api/ai/analyze/logs/?type=system&lines=20" hx-target="#chat-messages" hx-swap="beforeend"

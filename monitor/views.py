@@ -557,23 +557,58 @@ def docker_container_processes(request, container_id):
 def ai_analyze(request):
     """Анализ системы с помощью ИИ агента"""
     try:
+        print(f"🔍 AI Analyze request: {request.data}")
+
         if not ssh_service.connected:
             return Response({
                 "success": False,
-                "error": "Основной сервер не подключен"
+                "error": "Основной сервер не подключен. Сначала подключитесь к серверу."
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        user_query = request.data.get('query', '')
-        include_logs = request.data.get('include_logs', True)
-        include_docker = request.data.get('include_docker', True)
+        # Получаем данные разными способами
+        user_query = ""
+
+        # Пробуем получить из JSON
+        if hasattr(request, 'data') and request.data:
+            user_query = request.data.get('query', '')
+            # Если нет query, пробуем message (для совместимости)
+            if not user_query:
+                user_query = request.data.get('message', '')
+
+        # Пробуем получить из POST данных
+        if not user_query and request.POST:
+            user_query = request.POST.get('query', '') or request.POST.get('message', '')
+
+        # Если все еще нет, пробуем из тела запроса
+        if not user_query and request.body:
+            try:
+                body_data = json.loads(request.body)
+                user_query = body_data.get('query', '') or body_data.get('message', '')
+            except:
+                pass
+
+        if not user_query:
+            return Response({
+                "success": False,
+                "error": "Не указан запрос для анализа. Используйте параметр 'query' или 'message'."
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         print(f"🤖 Запрос на ИИ анализ: {user_query}")
 
+        # Получаем дополнительные параметры
+        include_logs = request.data.get('include_logs', True)
+        include_docker = request.data.get('include_docker', True)
+
+        # Выполняем анализ
         analysis_result = ai_agent.analyze_system_state(user_query)
 
         return Response(analysis_result)
 
     except Exception as e:
+        print(f"❌ Ошибка в ai_analyze: {str(e)}")
+        import traceback
+        traceback.print_exc()
+
         return Response({
             "success": False,
             "error": f"Ошибка ИИ анализа: {str(e)}"

@@ -8,26 +8,101 @@ class DiagnosticService:
     def __init__(self, ssh_service: SSHService):
         self.ssh = ssh_service
 
-    def get_system_resources(self) -> Dict:
-        """Получение информации о системных ресурсах"""
-        commands = {
-            "uptime": "uptime",
-            "memory": "free -h",
-            "disk": "df -h /",
-            "cpu": "top -bn1 | head -5"
-        }
+    def get_system_resources(self):
+        """Получение информации о системных ресурсах с правильным расчетом CPU"""
+        try:
+            resources = {}
 
-        results = {}
-        for key, command in commands.items():
-            result = self.ssh.execute_command(command)
-            results[key] = {
-                "success": result["success"],
-                "data": result["output"] if result["success"] else result["error"]
+            # Загрузка CPU - правильный расчет
+            cpu_result = self.ssh.execute_command("top -bn1 | grep 'Cpu(s)'")
+            if cpu_result["success"]:
+                cpu_line = cpu_result["output"]
+                # Ищем процент использования CPU (user + system)
+                if '%Cpu(s):' in cpu_line:
+                    # Формат: %Cpu(s):  0.1 us,  0.1 sy,  0.0 ni, 99.8 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+                    parts = cpu_line.split(',')
+                    us = float(parts[0].split('%Cpu(s):')[1].split('us')[0].strip())
+                    sy = float(parts[1].split('sy')[0].strip())
+                    cpu_usage = us + sy
+                else:
+                    # Альтернативный метод
+                    cpu_result = self.ssh.execute_command(
+                        "grep 'cpu ' /proc/stat | awk '{print (($2+$3+$4+$6+$7+$8)*100)/($2+$3+$4+$5+$6+$7+$8)}'")
+                    if cpu_result["success"] and cpu_result["output"].strip():
+                        cpu_usage = float(cpu_result["output"].strip())
+                    else:
+                        cpu_usage = 0
+            else:
+                cpu_usage = 0
+
+            # Ограничиваем максимальное значение
+            if cpu_usage > 100:
+                print(f"⚠️ Исправляю некорректное значение CPU: {cpu_usage}% -> 100%")
+                cpu_usage = 100
+
+            resources['cpu_usage'] = round(cpu_usage, 1)
+
+            # Память
+            mem_result = self.ssh.execute_command("free | grep Mem")
+            if mem_result["success"]:
+                mem_parts = mem_result["output"].split()
+                total_mem = int(mem_parts[1])
+                used_mem = int(mem_parts[2])
+                free_mem = int(mem_parts[3])
+                usage_percent = (used_mem / total_mem) * 100 if total_mem > 0 else 0
+
+                resources['memory'] = {
+                    'total': self._format_bytes(total_mem * 1024),  # KB to bytes
+                    'used': self._format_bytes(used_mem * 1024),
+                    'free': self._format_bytes(free_mem * 1024),
+                    'usage_percent': round(usage_percent, 1)
+                }
+            else:
+                resources['memory'] = {
+                    'total': 'N/A', 'used': 'N/A', 'free': 'N/A', 'usage_percent': 0
+                }
+
+            # Диск
+            disk_result = self.ssh.execute_command("df / | tail -1")
+            if disk_result["success"]:
+                disk_parts = disk_result["output"].split()
+                if len(disk_parts) >= 5:
+                    total_disk = int(disk_parts[1]) * 1024  # 1K blocks to bytes
+                    used_disk = int(disk_parts[2]) * 1024
+                    usage_percent = int(disk_parts[4].replace('%', ''))
+
+                    resources['disk'] = {
+                        'total': self._format_bytes(total_disk),
+                        'used': self._format_bytes(used_disk),
+                        'usage_percent': usage_percent
+                    }
+                else:
+                    resources['disk'] = {'usage_percent': 0}
+            else:
+                resources['disk'] = {'usage_percent': 0}
+
+            return resources
+
+        except Exception as e:
+            print(f"❌ Ошибка получения ресурсов: {e}")
+            return {
+                'cpu_usage': 0,
+                'memory': {'total': 'N/A', 'used': 'N/A', 'free': 'N/A', 'usage_percent': 0},
+                'disk': {'total': 'N/A', 'used': 'N/A', 'usage_percent': 0}
             }
 
-        # Парсим результаты
-        parsed_data = self._parse_system_resources(results)
-        return parsed_data
+    def _format_bytes(self, bytes_size):
+        """Форматирует байты в читаемый вид"""
+        if bytes_size == 0:
+            return "0 B"
+
+        sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+        i = 0
+        while bytes_size >= 1024 and i < len(sizes) - 1:
+            bytes_size /= 1024.0
+            i += 1
+
+        return f"{bytes_size:.1f} {sizes[i]}"
 
     def _parse_system_resources(self, results: Dict) -> Dict:
         """Парсинг сырых данных о ресурсах"""
