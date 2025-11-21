@@ -124,36 +124,65 @@ def disconnect_server(request):
 
 
 @api_view(['GET'])
+@csrf_exempt
 def get_system_logs(request):
     """Получение системных логов"""
     try:
-        lines = int(request.GET.get('lines', 50))
-        service = request.GET.get('service')
+        print("📨 Запрос на получение логов")
 
-        result = log_service.get_system_logs(lines=lines, service=service)
+        # ПРАВИЛЬНАЯ проверка SSH
+        if not hasattr(ssh_service, 'connected') or not ssh_service.connected:
+            print("❌ SSH не подключен")
+            return Response({
+                "success": False,
+                "error": "SSH сервер не подключен. Сначала подключитесь к серверу."
+            }, status=400)
+
+        # Безопасно получаем lines
+        lines_str = request.GET.get('lines', '50')
+        try:
+            lines = int(lines_str)
+        except:
+            lines = 50
+
+        lines = min(lines, 100)
+
+        service = request.GET.get('service', '')
+        print(f"🔧 Получаем логи: lines={lines}, service={service}")
+
+        # Простая команда для логов
+        if service:
+            cmd = f"journalctl -u {service} -n {lines} --no-pager 2>/dev/null || echo 'Сервис {service} не найден'"
+        else:
+            cmd = f"tail -{lines} /var/log/syslog 2>/dev/null || echo 'Файл логов недоступен'"
+
+        print(f"🔧 Выполняем команду: {cmd}")
+
+        result = ssh_service.execute_command(cmd)
+        print(f"🔧 Результат: success={result['success']}")
 
         if result["success"]:
-            # Парсим логи в структурированный формат
-            parsed_logs = log_service.parse_log_entries(result["logs"], "system")
-
             return Response({
                 "success": True,
-                "logs": parsed_logs,
-                "source": result["source"],
-                "total_entries": len(parsed_logs)
+                "logs": result["output"],
+                "lines": lines,
+                "source": service if service else "system"
             })
         else:
             return Response({
                 "success": False,
-                "error": result["error"]
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                "error": result.get("error", "Неизвестная ошибка SSH")
+            }, status=500)
 
     except Exception as e:
+        print(f"❌ Ошибка в get_system_logs: {str(e)}")
+        import traceback
+        traceback.print_exc()
+
         return Response({
             "success": False,
-            "error": f"Ошибка получения логов: {str(e)}"
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+            "error": f"Внутренняя ошибка: {str(e)}"
+        }, status=500)
 
 @api_view(['GET'])
 def get_docker_logs(request):
@@ -553,56 +582,60 @@ def docker_container_processes(request, container_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@api_view(['POST'])
+@require_http_methods(["POST"])
+@csrf_exempt
 def ai_analyze(request):
     """Анализ системы с помощью ИИ агента"""
     try:
-        print(f"🔍 AI Analyze request: {request.data}")
+        print(f"🔍 AI Analyze request received")
 
         if not ssh_service.connected:
-            return Response({
+            return JsonResponse({
                 "success": False,
                 "error": "Основной сервер не подключен. Сначала подключитесь к серверу."
-            }, status=status.HTTP_400_BAD_REQUEST)
+            }, status=400)
 
-        # Получаем данные разными способами
+        # Получаем данные из разных источников
         user_query = ""
 
-        # Пробуем получить из JSON
-        if hasattr(request, 'data') and request.data:
-            user_query = request.data.get('query', '')
-            # Если нет query, пробуем message (для совместимости)
-            if not user_query:
-                user_query = request.data.get('message', '')
-
-        # Пробуем получить из POST данных
-        if not user_query and request.POST:
+        # Пробуем получить из POST данных (form-data)
+        if request.POST:
             user_query = request.POST.get('query', '') or request.POST.get('message', '')
 
-        # Если все еще нет, пробуем из тела запроса
+        # Пробуем получить из тела запроса (JSON)
         if not user_query and request.body:
             try:
                 body_data = json.loads(request.body)
                 user_query = body_data.get('query', '') or body_data.get('message', '')
-            except:
+            except json.JSONDecodeError:
                 pass
 
+        # Пробуем получить из GET параметров (hx-vals)
+        if not user_query and request.GET:
+            user_query = request.GET.get('query', '') or request.GET.get('message', '')
+
         if not user_query:
-            return Response({
+            return JsonResponse({
                 "success": False,
                 "error": "Не указан запрос для анализа. Используйте параметр 'query' или 'message'."
-            }, status=status.HTTP_400_BAD_REQUEST)
+            }, status=400)
 
         print(f"🤖 Запрос на ИИ анализ: {user_query}")
-
-        # Получаем дополнительные параметры
-        include_logs = request.data.get('include_logs', True)
-        include_docker = request.data.get('include_docker', True)
 
         # Выполняем анализ
         analysis_result = ai_agent.analyze_system_state(user_query)
 
-        return Response(analysis_result)
+        return JsonResponse(analysis_result)
+
+    except Exception as e:
+        print(f"❌ Ошибка в ai_analyze: {str(e)}")
+        import traceback
+        traceback.print_exc()
+
+        return JsonResponse({
+            "success": False,
+            "error": f"Ошибка ИИ анализа: {str(e)}"
+        }, status=500)
 
     except Exception as e:
         print(f"❌ Ошибка в ai_analyze: {str(e)}")
@@ -918,11 +951,19 @@ def ai_chat_api(request):
         # Получаем ответ от ИИ
         chat_result = ai_agent.chat_with_ai(message)
 
-        if chat_result["success"]:
+        # ВАЖНО: Проверяем что chat_result - словарь
+        if not isinstance(chat_result, dict):
+            print(f"⚠️ chat_with_ai вернул не словарь: {type(chat_result)}")
+            chat_result = {
+                "success": False,
+                "error": "Некорректный ответ от AI агента",
+                "response": "Произошла внутренняя ошибка"
+            }
+
+        if chat_result.get("success"):
             response_text = chat_result.get("response", "Нет ответа")
             suggested_commands = chat_result.get("suggested_commands", [])
-
-            # Форматируем ответ
+            query_type = chat_result.get("query_type", "general")
             formatted_response = format_ai_response(response_text)
 
             ai_html = f"""

@@ -42,8 +42,198 @@ class AIAgent:
             "openai_configured": bool(settings.OPENAI_API_KEY)
         }
 
+    def _fallback_analysis(self, message: str) -> Dict:
+        """Fallback анализ если LLM недоступна"""
+        print("🔄 Использую fallback анализ (LLM недоступна)")
+
+        try:
+            # Собираем базовые данные
+            system_data = self._collect_relevant_data("diagnostic", message)
+            resources = system_data.get("resources", {})
+
+            # Простой анализ на основе данных
+            cpu_usage = resources.get('cpu_usage', 0)
+            memory_usage = resources.get('memory', {}).get('usage_percent', 0)
+            disk_usage = resources.get('disk', {}).get('usage_percent', 0)
+
+            # Анализируем тип запроса для базового ответа
+            query_type = self._analyze_query_type(message)
+
+            if query_type == "network":
+                response = f"""
+    🤖 Базовый анализ сети (LLM недоступна)
+
+    СОСТОЯНИЕ СИСТЕМЫ:
+    • CPU: {cpu_usage}%
+    • Память: {memory_usage}%
+    • Диск: {disk_usage}%
+
+    Для анализа сети используйте:
+    - ss -tuln - открытые порты
+    - ping google.com - проверка подключения
+    - ip addr show - сетевые интерфейсы
+
+    ⚠️ Для детального анализа сети требуется доступ к AI модели.
+    """
+                commands = ["ss -tuln", "ping -c 3 google.com", "ip addr show"]
+
+            elif query_type == "logs":
+                response = f"""
+    🤖 Базовый анализ логов (LLM недоступна)
+
+    СОСТОЯНИЕ СИСТЕМЫ:
+    • CPU: {cpu_usage}%
+    • Память: {memory_usage}%
+    • Диск: {disk_usage}%
+
+    Для анализа логов рекомендую выполнить:
+    - journalctl -n 50 - для просмотра системных логов
+    - tail -100 /var/log/syslog - для просмотра syslog
+
+    ⚠️ Для более детального анализа требуется доступ к AI модели.
+    """
+                commands = ["journalctl -n 20", "tail -50 /var/log/syslog"]
+
+            # ... остальные типы запросов ...
+
+            else:
+                response = f"""
+    🤖 Базовый анализ системы (LLM недоступна)
+
+    ТЕКУЩЕЕ СОСТОЯНИЕ:
+    • Загрузка CPU: {cpu_usage}%
+    • Использование памяти: {memory_usage}%
+    • Использование диска: {disk_usage}%
+
+    ОБЩИЕ КОМАНДЫ ДЛЯ ДИАГНОСТИКИ:
+    - top -bn1 | head -20
+    - free -h
+    - df -h  
+    - docker ps -a
+
+    ⚠️ AI модель временно недоступна.
+    """
+                commands = ["top -bn1 | head -20", "free -h", "df -h", "docker ps -a"]
+
+            # ВАЖНО: Всегда возвращаем словарь
+            return {
+                "success": True,
+                "response": response,
+                "suggested_commands": commands,
+                "query_type": query_type,
+                "fallback": True
+            }
+
+        except Exception as e:
+            # Даже при ошибке возвращаем словарь
+            return {
+                "success": False,
+                "error": f"Ошибка fallback анализа: {str(e)}",
+                "response": "❌ Не удалось выполнить анализ. Проверьте подключение к серверу и настройки AI.",
+                "suggested_commands": [],
+                "query_type": "error"
+            }
+
+    def _build_prompt(self, user_message: str, query_type: str, system_data: Dict) -> str:
+        """Генерим промпт для AI"""
+
+        # Базовые данные системы
+        resources = system_data.get("resources", {})
+        cpu = resources.get('cpu_usage', 0)
+        memory = resources.get('memory', {}).get('usage_percent', 0)
+        disk = resources.get('disk', {}).get('usage_percent', 0)
+
+        prompt = f"""
+    Данные сервера:
+    - CPU: {cpu}%
+    - Память: {memory}%
+    - Диск: {disk}%
+
+    Вопрос: {user_message}
+
+    Дай четкий ответ по делу. Если есть проблемы - скажи что делать. В конце предложи 2-3 команды для проверки.
+    """
+        return prompt
+
+    def _generate_simple_response(self, message: str, query_type: str, system_data: Dict) -> str:
+        """Генерим простой ответ без внешних зависимостей"""
+
+        resources = system_data.get("resources", {})
+        cpu = resources.get('cpu_usage', 0)
+        memory = resources.get('memory', {}).get('usage_percent', 0)
+        disk = resources.get('disk', {}).get('usage_percent', 0)
+
+        responses = {
+            "network": f"""📡 Анализ сети
+
+    Состояние системы:
+    • CPU: {cpu}%
+    • Память: {memory}% 
+    • Диск: {disk}%
+
+    Команды для проверки сети:
+    \`\`\`bash
+    ss -tuln
+    ping -c 3 google.com
+    ip addr show
+    \`\`\`
+
+    Что именно не так с сетью?""",
+
+            "logs": f"""📝 Анализ логов
+
+    Состояние системы:
+    • CPU: {cpu}%
+    • Память: {memory}%
+    • Диск: {disk}%
+
+    Команды для проверки логов:
+    \`\`\`bash
+    journalctl -n 30
+    tail -50 /var/log/syslog
+    dmesg | tail -20
+    \`\`\`
+
+    Какие логи интересуют?""",
+
+            "docker": f"""🐳 Анализ Docker
+
+    Состояние системы:
+    • CPU: {cpu}%
+    • Память: {memory}%
+    • Диск: {disk}%
+
+    Команды для Docker:
+    \`\`\`bash
+    docker ps -a
+    docker stats --no-stream
+    docker system df
+    \`\`\`
+
+    Какой контейнер проверяем?"""
+        }
+
+        return responses.get(query_type, f"""🤖 Анализ системы
+
+    Текущее состояние:
+    • CPU: {cpu}%
+    • Память: {memory}%
+    • Диск: {disk}%
+
+    Команды для диагностики:
+    \`\`\`bash
+    top -bn1 | head -20
+    free -h
+    df -h
+    docker ps -a
+    ss -tuln
+    \`\`\`
+
+    Задай конкретный вопрос о системе!""")
+
+
     def chat_with_ai(self, message: str) -> Dict:
-        """Чат с ИИ агентом через OpenAI API"""
+        """Чат с ИИ агентом через локальную LLM"""
         try:
             # Анализируем тип запроса
             query_type = self._analyze_query_type(message)
@@ -52,22 +242,12 @@ class AIAgent:
             # Собираем релевантные данные
             system_data = self._collect_relevant_data(query_type, message)
 
-            # Формируем промпт для OpenAI
-            messages = self._build_messages(message, query_type, system_data)
+            # Формируем промпт
+            prompt = self._build_prompt(message, query_type, system_data)
 
-            # Отправляем запрос к OpenAI
-            print("🤖 Отправляю запрос к OpenAI...")
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=1500
-            )
+            ai_response = self._generate_simple_response(message, query_type, system_data)
 
-            # Получаем ответ
-            ai_response = response.choices[0].message.content
-
-            # Извлекаем предложенные команды из ответа
+            # Извлекаем предложенные команды
             suggested_commands = self._extract_commands_from_response(ai_response)
 
             # Сохраняем в историю
@@ -80,6 +260,7 @@ class AIAgent:
                 "content": ai_response
             })
 
+            # ВАЖНО: Всегда возвращаем словарь
             return {
                 "success": True,
                 "response": ai_response,
@@ -89,11 +270,8 @@ class AIAgent:
 
         except Exception as e:
             print(f"❌ Ошибка в chat_with_ai: {e}")
-            return {
-                "success": False,
-                "error": f"Ошибка чата с ИИ: {str(e)}",
-                "response": "Извините, произошла ошибка при обработке запроса."
-            }
+            # Fallback на базовый анализ если LLM недоступна
+            return self._fallback_analysis(message)
 
     def _analyze_query_type(self, message: str) -> str:
         """Анализирует тип запроса пользователя"""
@@ -330,10 +508,32 @@ class AIAgent:
 
         return unique_commands
 
-    # Методы для обратной совместимости
     def analyze_system_state(self, user_query: str = "") -> Dict:
-        """Анализ текущего состояния системы с помощью ИИ агента"""
-        return self.chat_with_ai(user_query or "Проанализируй текущее состояние системы")
+        """Анализ текущего состояния системы с помощью ИИ агента (для обратной совместимости)"""
+        try:
+            # Просто вызываем chat_with_ai и возвращаем результат
+            result = self.chat_with_ai(user_query or "Проанализируй текущее состояние системы")
+
+            # Убедимся что возвращаем правильный формат
+            if isinstance(result, dict):
+                return result
+            else:
+                # Если вернулась строка, оборачиваем в словарь
+                return {
+                    "success": True,
+                    "response": str(result),
+                    "suggested_commands": [],
+                    "query_type": "general"
+                }
+
+        except Exception as e:
+            print(f"❌ Ошибка в analyze_system_state: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "response": "Не удалось проанализировать систему",
+                "suggested_commands": []
+            }
 
     def get_conversation_history(self) -> List[Dict]:
         """Получение истории разговора"""
