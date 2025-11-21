@@ -1,0 +1,211 @@
+{% extends 'monitor/base.html' %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <h1 class="text-3xl font-bold text-gray-800 mb-8">📝 Просмотр логов</h1>
+
+    <!-- Выбор типа логов -->
+    <div class="bg-white rounded-lg shadow p-6 mb-8">
+        <h2 class="text-xl font-semibold mb-4">📋 Типы логов</h2>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <button onclick="loadLogs('system')"
+                    class="bg-blue-500 text-white px-4 py-3 rounded hover:bg-blue-600 text-center">
+                🖥️ Системные логи
+            </button>
+            <button onclick="loadLogs('docker')"
+                    class="bg-green-500 text-white px-4 py-3 rounded hover:bg-green-600 text-center">
+                🐳 Docker логи
+            </button>
+            <button onclick="loadLogs('auth')"
+                    class="bg-yellow-500 text-white px-4 py-3 rounded hover:bg-yellow-600 text-center">
+                🔐 Логи авторизации
+            </button>
+            <button onclick="loadLogs('kernel')"
+                    class="bg-red-500 text-white px-4 py-3 rounded hover:bg-red-600 text-center">
+                ⚙️ Логи ядра
+            </button>
+        </div>
+
+        <!-- Настройки отображения -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Количество строк:</label>
+                <select id="log-lines" class="border border-gray-300 rounded px-3 py-2 w-full">
+                    <option value="10">10 строк</option>
+                    <option value="20">20 строк</option>
+                    <option value="50">50 строк</option>
+                    <option value="100">100 строк</option>
+                </select>
+            </div>
+            <div id="service-select-container" class="hidden">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Сервис:</label>
+                <select id="log-service" class="border border-gray-300 rounded px-3 py-2 w-full">
+                    <option value="">Все сервисы</option>
+                    <option value="nginx">nginx</option>
+                    <option value="apache2">apache2</option>
+                    <option value="mysql">mysql</option>
+                    <option value="postgresql">postgresql</option>
+                    <option value="docker">docker</option>
+                </select>
+            </div>
+            <div id="container-select-container" class="hidden">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Контейнер:</label>
+                <input type="text" id="log-container" placeholder="Имя контейнера"
+                       class="border border-gray-300 rounded px-3 py-2 w-full">
+            </div>
+        </div>
+
+        <!-- Кнопка анализа ИИ -->
+        <div class="mt-4">
+            <button onclick="analyzeLogsWithAI()"
+                    class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">
+                🤖 Проанализировать логи с ИИ
+            </button>
+        </div>
+    </div>
+
+    <!-- Отображение логов -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="flex justify-between items-center p-6 border-b">
+            <h2 class="text-xl font-semibold" id="logs-title">Логи системы</h2>
+            <div class="space-x-2">
+                <button onclick="refreshLogs()"
+                        class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
+                    🔄 Обновить
+                </button>
+                <button onclick="clearLogs()"
+                        class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
+                    🧹 Очистить
+                </button>
+            </div>
+        </div>
+        <div id="logs-content" class="p-6">
+            <div class="text-center py-12 text-gray-500">
+                <p class="text-lg">📋 Выберите тип логов для просмотра</p>
+                <p class="text-sm mt-2">Используйте кнопки выше для выбора типа логов</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Результат анализа ИИ -->
+    <div id="ai-analysis-result" class="bg-white rounded-lg shadow p-6 mt-6 hidden">
+        <h3 class="text-lg font-semibold mb-4">🤖 Анализ ИИ</h3>
+        <div id="ai-analysis-content"></div>
+    </div>
+</div>
+
+<script>
+let currentLogType = '';
+
+function loadLogs(logType) {
+    currentLogType = logType;
+    const lines = document.getElementById('log-lines').value;
+
+    // Обновляем UI
+    document.getElementById('logs-title').textContent = getLogTitle(logType);
+    document.getElementById('service-select-container').classList.add('hidden');
+    document.getElementById('container-select-container').classList.add('hidden');
+
+    let url = '';
+    switch(logType) {
+        case 'system':
+            url = `/api/logs/system/?lines=${lines}`;
+            document.getElementById('service-select-container').classList.remove('hidden');
+            break;
+        case 'docker':
+            url = `/api/logs/docker/?lines=${lines}`;
+            document.getElementById('container-select-container').classList.remove('hidden');
+            break;
+        case 'auth':
+            url = `/api/logs/auth/?lines=${lines}`;
+            break;
+        case 'kernel':
+            url = `/api/logs/kernel/?lines=${lines}`;
+            break;
+    }
+
+    htmx.ajax('GET', url, { target: '#logs-content' });
+}
+
+function getLogTitle(logType) {
+    const titles = {
+        'system': 'Системные логи',
+        'docker': 'Docker логи',
+        'auth': 'Логи авторизации',
+        'kernel': 'Логи ядра'
+    };
+    return titles[logType] || 'Логи';
+}
+
+function refreshLogs() {
+    if (currentLogType) {
+        loadLogs(currentLogType);
+    }
+}
+
+function clearLogs() {
+    document.getElementById('logs-content').innerHTML = `
+        <div class="text-center py-8 text-gray-500">
+            Логи очищены
+        </div>
+    `;
+}
+
+function analyzeLogsWithAI() {
+    if (!currentLogType) {
+        alert('Сначала выберите тип логов для анализа');
+        return;
+    }
+
+    const lines = document.getElementById('log-lines').value;
+    let url = `/api/ai/analyze/logs/?type=${currentLogType}&lines=${lines}`;
+
+    // Добавляем дополнительные параметры
+    if (currentLogType === 'system') {
+        const service = document.getElementById('log-service').value;
+        if (service) url += `&service=${service}`;
+    } else if (currentLogType === 'docker') {
+        const container = document.getElementById('log-container').value;
+        if (container) url += `&container=${container}`;
+    }
+
+    document.getElementById('ai-analysis-result').classList.remove('hidden');
+    htmx.ajax('GET', url, { target: '#ai-analysis-content' });
+}
+
+// Загружаем системные логи по умолчанию
+document.addEventListener('DOMContentLoaded', function() {
+    loadLogs('system');
+});
+</script>
+
+<style>
+.log-entry {
+    border-bottom: 1px solid #e5e7eb;
+    padding: 0.5rem 0;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.875rem;
+}
+
+.log-entry:last-child {
+    border-bottom: none;
+}
+
+.log-error {
+    color: #dc2626;
+    font-weight: bold;
+}
+
+.log-warning {
+    color: #d97706;
+}
+
+.log-info {
+    color: #2563eb;
+}
+
+.log-debug {
+    color: #6b7280;
+}
+</style>
+{% endblock %}

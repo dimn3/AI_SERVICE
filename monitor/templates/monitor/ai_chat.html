@@ -1,0 +1,275 @@
+{% extends 'monitor/base.html' %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+        <!-- Заголовок -->
+        <div class="gradient-bg text-white p-8">
+            <div class="flex items-center space-x-4 mb-4">
+                <div class="bg-white bg-opacity-20 p-3 rounded-xl">
+                    <i class="fas fa-robot text-2xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-3xl font-bold">ИИ Агент - Системный администратор</h1>
+                    <p class="text-blue-100 mt-2">Задавайте вопросы о состоянии сервера и получайте интеллектуальный анализ</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Основной контент -->
+        <div class="p-6">
+            <!-- Статус системы -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <h3 class="font-semibold text-gray-800 mb-2 flex items-center">
+                        <i class="fas fa-server text-blue-500 mr-2"></i>
+                        Статус сервера
+                    </h3>
+                    <div id="system-status" class="text-sm">
+                        <div class="flex items-center space-x-2">
+                            <div class="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div>
+                            <span class="text-gray-600">Проверка подключения...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <h3 class="font-semibold text-gray-800 mb-2 flex items-center">
+                        <i class="fas fa-robot text-purple-500 mr-2"></i>
+                        Статус ИИ агента
+                    </h3>
+                    <div id="ai-status" class="text-sm">
+                        <div class="flex items-center space-x-2">
+                            <div class="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div>
+                            <span class="text-gray-600">Загрузка статуса...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Чат интерфейс -->
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <!-- История чата -->
+                <div class="lg:col-span-3">
+                    <div class="bg-gray-50 rounded-xl p-4 h-[500px] overflow-y-auto border" id="chat-messages">
+                        <div class="text-center py-16 text-gray-500">
+                            <i class="fas fa-robot text-6xl mb-4 text-gray-300"></i>
+                            <p class="text-xl font-semibold mb-2">Добро пожаловать в ИИ чат!</p>
+                            <p class="text-gray-600">Задайте вопрос о состоянии сервера, и ИИ агент поможет с анализом</p>
+                        </div>
+                    </div>
+
+                    <!-- Форма ввода -->
+                    <div class="mt-4">
+                        <form hx-post="/api/ai/chat/" hx-target="#chat-messages" hx-swap="beforeend"
+                              class="flex gap-3" hx-on::after-request="this.reset()">
+                            {% csrf_token %}
+                            <input type="text" name="message" placeholder="Например: 'Какие процессы нагружают систему?'..."
+                                   class="flex-1 border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                                   required>
+                            <button type="submit"
+                                    class="bg-blue-600 text-white px-8 py-3 rounded-xl hover:bg-blue-700 transition-colors font-semibold">
+                                <i class="fas fa-paper-plane mr-2"></i>Отправить
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Быстрые запросы -->
+                    <div class="mt-6">
+                        <h4 class="text-sm font-semibold text-gray-600 mb-3">🚀 Быстрые запросы:</h4>
+                        <div class="grid grid-cols-2 gap-2">
+                            {% for query in quick_queries %}
+                            <button hx-post="/api/ai/chat/" hx-target="#chat-messages" hx-swap="beforeend"
+                                    hx-vals='{"message": "{{ query }}"}'
+                                    class="bg-white border border-gray-300 text-gray-700 px-4 py-3 rounded-lg hover:bg-gray-50 transition-colors text-left text-sm">
+                                {{ query }}
+                            </button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Панель управления -->
+                <div class="space-y-4">
+                    <!-- Действия -->
+                    <div class="bg-white border border-gray-200 rounded-xl p-4">
+                        <h3 class="font-semibold text-gray-800 mb-3 flex items-center">
+                            <i class="fas fa-bolt text-yellow-500 mr-2"></i>
+                            Быстрый анализ
+                        </h3>
+                        <div class="space-y-2">
+                            <button hx-post="/api/ai/analyze/" hx-target="#chat-messages" hx-swap="beforeend"
+                                    hx-vals='{"query": "Проведи полную диагностику системы"}'
+                                    class="w-full bg-green-500 text-white px-3 py-3 rounded-lg hover:bg-green-600 transition-colors text-sm font-semibold text-left">
+                                <i class="fas fa-search mr-2"></i>Полная диагностика
+                            </button>
+                            <button hx-get="/api/ai/analyze/logs/?type=system&lines=20" hx-target="#chat-messages" hx-swap="beforeend"
+                                    class="w-full bg-yellow-500 text-white px-3 py-3 rounded-lg hover:bg-yellow-600 transition-colors text-sm font-semibold text-left">
+                                <i class="fas fa-file-alt mr-2"></i>Анализ логов
+                            </button>
+                            <button hx-get="/api/ai/analyze/docker/" hx-target="#chat-messages" hx-swap="beforeend"
+                                    class="w-full bg-purple-500 text-white px-3 py-3 rounded-lg hover:bg-purple-600 transition-colors text-sm font-semibold text-left">
+                                <i class="fab fa-docker mr-2"></i>Анализ Docker
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Управление историей -->
+                    <div class="bg-white border border-gray-200 rounded-xl p-4">
+                        <h3 class="font-semibold text-gray-800 mb-3 flex items-center">
+                            <i class="fas fa-history text-blue-500 mr-2"></i>
+                            Управление
+                        </h3>
+                        <div class="space-y-2">
+                            <button hx-get="/api/ai/status/" hx-target="#ai-status"
+                                    class="w-full bg-blue-500 text-white px-3 py-2 rounded-lg hover:bg-blue-600 transition-colors text-sm">
+                                <i class="fas fa-sync-alt mr-2"></i>Обновить статус
+                            </button>
+                            <button hx-get="/api/ai/history/" hx-target="#chat-messages"
+                                    class="w-full bg-gray-500 text-white px-3 py-2 rounded-lg hover:bg-gray-600 transition-colors text-sm">
+                                <i class="fas fa-list mr-2"></i>История
+                            </button>
+                            <button hx-post="/api/ai/clear-history/" hx-target="#chat-messages"
+                                    class="w-full bg-red-500 text-white px-3 py-2 rounded-lg hover:bg-red-600 transition-colors text-sm">
+                                <i class="fas fa-trash mr-2"></i>Очистить
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для полного ответа -->
+<div id="full-response-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl max-w-4xl w-full max-h-[80vh] overflow-hidden shadow-2xl">
+        <div class="flex justify-between items-center p-6 border-b bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+            <h3 class="text-xl font-bold">📄 Полный ответ ИИ агента</h3>
+            <button onclick="closeFullResponse()" class="text-white hover:text-gray-200 text-2xl transition-colors">
+                ✕
+            </button>
+        </div>
+        <div class="p-6 overflow-y-auto max-h-[60vh] bg-gray-50">
+            <pre id="full-response-content" class="whitespace-pre-wrap text-sm font-mono bg-white p-6 rounded-lg border"></pre>
+        </div>
+        <div class="p-4 border-t bg-white flex justify-between items-center">
+            <button onclick="copyFullResponse()" class="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors">
+                📋 Копировать
+            </button>
+            <button onclick="closeFullResponse()" class="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors font-semibold">
+                Закрыть
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+.chat-message {
+    margin-bottom: 1.5rem;
+    padding: 1.5rem;
+    border-radius: 1rem;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+.user-message {
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    margin-left: 1rem;
+    border-left: 4px solid #3b82f6;
+}
+.ai-message {
+    background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%);
+    margin-right: 1rem;
+    border-left: 4px solid #8b5cf6;
+}
+.message-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+.ai-response-content {
+    line-height: 1.6;
+}
+.ai-response-content p {
+    margin-bottom: 0.75rem;
+}
+.ai-response-content ul {
+    margin-bottom: 0.75rem;
+}
+.ai-response-content code {
+    background-color: #1f2937;
+    color: #10b981;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.375rem;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.875rem;
+}
+</style>
+
+<script>
+// Функции для модального окна
+function showFullResponse(content) {
+    document.getElementById('full-response-content').textContent = content;
+    document.getElementById('full-response-modal').classList.remove('hidden');
+}
+
+function closeFullResponse() {
+    document.getElementById('full-response-modal').classList.add('hidden');
+}
+
+function copyFullResponse() {
+    const content = document.getElementById('full-response-content').textContent;
+    navigator.clipboard.writeText(content).then(() => {
+        alert('Ответ скопирован в буфер обмена!');
+    });
+}
+
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        // Можно добавить уведомление о копировании
+        console.log('Команда скопирована:', text);
+    });
+}
+
+// Обработка ответов от сервера
+document.body.addEventListener('htmx:afterRequest', function(evt) {
+    if (evt.target.id === 'chat-messages') {
+        // Прокручиваем к последнему сообщению
+        const chatMessages = document.getElementById('chat-messages');
+        setTimeout(() => {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }, 100);
+
+        // Добавляем обработчики для кнопок "Показать полностью"
+        setTimeout(() => {
+            document.querySelectorAll('.show-full-btn').forEach(btn => {
+                btn.onclick = function() {
+                    const content = this.getAttribute('data-content');
+                    showFullResponse(content);
+                };
+            });
+        }, 150);
+    }
+});
+
+// Загружаем начальный статус
+document.addEventListener('DOMContentLoaded', function() {
+    // Загружаем статус системы
+    htmx.ajax('GET', '/api/status/', { target: '#system-status' });
+
+    // Загружаем статус ИИ
+    htmx.ajax('GET', '/api/ai/status/', { target: '#ai-status' });
+});
+
+// Автофокус на поле ввода
+document.addEventListener('DOMContentLoaded', function() {
+    const messageInput = document.querySelector('input[name="message"]');
+    if (messageInput) {
+        messageInput.focus();
+    }
+});
+</script>
+{% endblock %}

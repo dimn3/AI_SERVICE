@@ -1,0 +1,31 @@
+# .gitignore
+# Django
+*.pyc
+*__pycache__/
+db.sqlite3
+.env
+.env.local
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Static files (если собираетесь их в репо)
+# static/
+# media/
+
+# SSH keys
+*.pem
+*.key
+id_rsa*

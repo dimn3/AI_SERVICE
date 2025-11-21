@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Monitor AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        secondary: '#1e40af',
+                        accent: '#f59e0b'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card-hover {
+            transition: all 0.3s ease;
+        }
+        .card-hover:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        .nav-link {
+            transition: all 0.3s ease;
+            border-bottom: 2px solid transparent;
+        }
+        .nav-link.active {
+            border-bottom-color: white;
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+        .nav-link:hover {
+            border-bottom-color: white;
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Глобальные стили для скроллируемых контейнеров */
+        .scrollable-content {
+            max-height: 400px;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        .scrollable-content-lg {
+            max-height: 500px;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        .scrollable-content-xl {
+            max-height: 600px;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        /* Стили для скроллбара */
+        .scrollable-content::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .scrollable-content::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+
+        .scrollable-content::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+        }
+
+        .scrollable-content::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+
+        /* Стили для длинного текста */
+        .break-words {
+            word-wrap: break-word;
+            word-break: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .preformatted-text {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.875rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Навигация -->
+    <nav class="gradient-bg text-white shadow-xl">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center py-4">
+                <div class="flex items-center space-x-3">
+                    <a href="/" class="flex items-center space-x-3">
+                        <div class="bg-white bg-opacity-20 p-2 rounded-lg">
+                            <i class="fas fa-server text-xl"></i>
+                        </div>
+                        <h1 class="text-2xl font-bold">Server Monitor AI</h1>
+                    </a>
+                </div>
+                <div class="flex space-x-1">
+                    <a href="/" class="nav-link px-4 py-2 rounded-lg flex items-center space-x-2 {% if request.path == '/' %}active{% endif %}">
+                        <i class="fas fa-chart-bar"></i>
+                        <span>Дашборд</span>
+                    </a>
+                    <a href="/diagnostics/" class="nav-link px-4 py-2 rounded-lg flex items-center space-x-2 {% if request.path == '/diagnostics/' %}active{% endif %}">
+                        <i class="fas fa-stethoscope"></i>
+                        <span>Диагностика</span>
+                    </a>
+                    <a href="/docker/" class="nav-link px-4 py-2 rounded-lg flex items-center space-x-2 {% if request.path == '/docker/' %}active{% endif %}">
+                        <i class="fab fa-docker"></i>
+                        <span>Docker</span>
+                    </a>
+                    <a href="/logs/" class="nav-link px-4 py-2 rounded-lg flex items-center space-x-2 {% if request.path == '/logs/' %}active{% endif %}">
+                        <i class="fas fa-file-alt"></i>
+                        <span>Логи</span>
+                    </a>
+                    <a href="/ai-chat/" class="nav-link px-4 py-2 rounded-lg flex items-center space-x-2 {% if request.path == '/ai-chat/' %}active{% endif %}">
+                        <i class="fas fa-robot"></i>
+                        <span>ИИ Агент</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Контент -->
+    <main class="container mx-auto px-4 py-8">
+        {% block content %}
+        {% endblock %}
+    </main>
+
+    <!-- Футер -->
+    <footer class="bg-gray-800 text-white py-8 mt-12">
+        <div class="container mx-auto px-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">Server Monitor AI</h3>
+                    <p class="text-gray-300">Интеллектуальная система мониторинга серверов с AI-ассистентом</p>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">Быстрые ссылки</h3>
+                    <div class="space-y-2">
+                        <a href="/" class="block text-gray-300 hover:text-white">Дашборд</a>
+                        <a href="/ai-chat/" class="block text-gray-300 hover:text-white">ИИ Агент</a>
+                        <a href="/docker/" class="block text-gray-300 hover:text-white">Docker</a>
+                    </div>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">Технологии</h3>
+                    <div class="flex space-x-3 text-2xl text-gray-300">
+                        <i class="fab fa-python" title="Django"></i>
+                        <i class="fab fa-docker" title="Docker"></i>
+                        <i class="fas fa-robot" title="AI"></i>
+                        <i class="fab fa-linux" title="Linux"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="border-t border-gray-700 mt-8 pt-6 text-center text-gray-400">
+                <p>&copy; 2024 Server Monitor AI. Все права защищены.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Глобальные скрипты -->
+    <script>
+    // Функция для копирования в буфер обмена
+    function copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(() => {
+            // Можно добавить toast уведомление
+            console.log('Скопировано:', text);
+        }).catch(err => {
+            console.error('Ошибка копирования:', err);
+        });
+    }
+
+    // Функция для форматирования JSON
+    function formatJSON(jsonString) {
+        try {
+            const parsed = JSON.parse(jsonString);
+            return JSON.stringify(parsed, null, 2);
+        } catch (e) {
+            return jsonString;
+        }
+    }
+
+    // Автоматически применяем стили к длинному контенту
+    document.addEventListener('DOMContentLoaded', function() {
+        // Добавляем классы ко всем элементам с длинным текстом
+        document.querySelectorAll('[id$="-result"], [id$="-status"], [id$="-info"]').forEach(el => {
+            el.classList.add('break-words', 'preformatted-text');
+        });
+    });
+    </script>
+</body>
+</html>

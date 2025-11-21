@@ -1,0 +1,97 @@
+{% extends 'monitor/base.html' %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <h1 class="text-3xl font-bold text-gray-800 mb-8">🔧 Диагностика системы</h1>
+
+    <!-- Быстрая диагностика -->
+    <div class="bg-white rounded-lg shadow p-6 mb-8">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-semibold">⚡ Быстрая диагностика</h2>
+            <button hx-get="/api/diagnostic/quick/" hx-target="#quick-diagnostic"
+                    class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                Запустить диагностику
+            </button>
+        </div>
+        <div id="quick-diagnostic" class="bg-gray-50 rounded p-4 min-h-32">
+            <p class="text-gray-500 text-center py-8">Нажмите "Запустить диагностику" для анализа системы</p>
+        </div>
+    </div>
+
+    <!-- Детальная диагностика -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <!-- Системные ресурсы -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-lg font-semibold mb-4">💻 Системные ресурсы</h3>
+            <div id="system-resources">
+                <p class="text-gray-600">Загрузка данных о ресурсах...</p>
+            </div>
+            <button hx-get="/api/diagnostic/resources/" hx-target="#system-resources"
+                    class="mt-4 w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                Обновить ресурсы
+            </button>
+        </div>
+
+        <!-- Процессы -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-lg font-semibold mb-4">🚀 Процессы</h3>
+            <div class="space-y-2 mb-4">
+                <label class="block text-sm font-medium text-gray-700">Сортировка:</label>
+                <select id="process-sort" class="border border-gray-300 rounded px-3 py-2 w-full">
+                    <option value="cpu">По CPU</option>
+                    <option value="memory">По памяти</option>
+                </select>
+            </div>
+            <div id="processes-list">
+                <p class="text-gray-600">Загрузка процессов...</p>
+            </div>
+            <button onclick="loadProcesses()"
+                    class="mt-4 w-full bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">
+                Обновить процессы
+            </button>
+        </div>
+    </div>
+
+    <!-- Сервисы и сеть -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Системные сервисы -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-lg font-semibold mb-4">🔧 Системные сервисы</h3>
+            <div id="services-list">
+                <p class="text-gray-600">Загрузка списка сервисов...</p>
+            </div>
+            <button hx-get="/api/diagnostic/services/" hx-target="#services-list"
+                    class="mt-4 w-full bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600">
+                Обновить сервисы
+            </button>
+        </div>
+
+        <!-- Сетевая информация -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-lg font-semibold mb-4">🌐 Сетевая информация</h3>
+            <div id="network-info">
+                <p class="text-gray-600">Загрузка сетевой информации...</p>
+            </div>
+            <button hx-get="/api/diagnostic/network/" hx-target="#network-info"
+                    class="mt-4 w-full bg-indigo-500 text-white px-4 py-2 rounded hover:bg-indigo-600">
+                Обновить сеть
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+function loadProcesses() {
+    const sortBy = document.getElementById('process-sort').value;
+    htmx.ajax('GET', `/api/diagnostic/processes/?sort_by=${sortBy}&limit=10`, {
+        target: '#processes-list'
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Загружаем начальные данные
+    loadProcesses();
+    htmx.ajax('GET', '/api/diagnostic/services/', { target: '#services-list' });
+});
+</script>
+{% endblock %}
