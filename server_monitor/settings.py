@@ -100,7 +100,7 @@ AI_SSH_CONFIG = {
 }
 
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', 'your-openai-api-key-here')
-OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-3.5-turbo')
+OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4')
 
 # CSRF settings
 CSRF_TRUSTED_ORIGINS = [

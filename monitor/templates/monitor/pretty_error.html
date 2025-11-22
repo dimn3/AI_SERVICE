@@ -1,0 +1,74 @@
+{% extends 'monitor/pretty_base.html' %}
+
+{% block title %}Ошибка - AI Monitor{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto text-center py-12">
+    <div class="bg-white rounded-xl shadow-sm border p-8">
+        <div class="text-6xl mb-4">😕</div>
+        <h1 class="text-2xl font-bold text-gray-800 mb-4">Произошла ошибка</h1>
+
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <div class="flex items-center">
+                <i class="fas fa-exclamation-circle text-red-500 mr-3"></i>
+                <div class="text-left">
+                    <h3 class="font-semibold text-red-800">Ошибка:</h3>
+                    <p class="text-red-700 mt-1">{{ error|default:"Неизвестная ошибка" }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="space-y-4">
+            <p class="text-gray-600">Попробуйте выполнить следующие действия:</p>
+
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <button onclick="location.reload()"
+                        class="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition-colors">
+                    <i class="fas fa-sync-alt mr-2"></i>Попробовать снова
+                </button>
+
+                <a href="/"
+                   class="bg-gray-500 text-white px-6 py-3 rounded-lg hover:bg-gray-600 transition-colors inline-block">
+                    <i class="fas fa-home mr-2"></i>На главную
+                </a>
+
+                {% if not connected %}
+                <button onclick="connectServer()"
+                        class="bg-green-500 text-white px-6 py-3 rounded-lg hover:bg-green-600 transition-colors">
+                    <i class="fas fa-plug mr-2"></i>Подключиться
+                </button>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Техническая информация (для отладки) -->
+        <details class="mt-6 text-left">
+            <summary class="cursor-pointer text-gray-600 hover:text-gray-800">
+                <i class="fas fa-bug mr-2"></i>Техническая информация
+            </summary>
+            <div class="mt-2 p-3 bg-gray-100 rounded text-sm font-mono overflow-auto">
+                <div><strong>URL:</strong> {{ request.path }}</div>
+                <div><strong>SSH подключение:</strong> {{ connected|yesno:"Подключен,Не подключен" }}</div>
+                <div><strong>Время:</strong> {% now "H:i:s" %}</div>
+            </div>
+        </details>
+    </div>
+</div>
+
+<script>
+function connectServer() {
+    fetch('/api/connect/simple/', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'connected') {
+                location.reload();
+            } else {
+                alert('Ошибка подключения: ' + data.message);
+            }
+        })
+        .catch(error => {
+            alert('Ошибка: ' + error);
+        });
+}
+</script>
+{% endblock %}

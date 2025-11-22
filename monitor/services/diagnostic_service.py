@@ -185,33 +185,68 @@ class DiagnosticService:
         except:
             return 0.0
 
-    def get_running_processes(self, limit: int = 10, sort_by: str = "cpu") -> List[Dict]:
-        """Получение списка запущенных процессов"""
-        if sort_by == "cpu":
-            command = f"ps aux --sort=-%cpu | head -{limit + 1}"
-        else:
-            command = f"ps aux --sort=-%mem | head -{limit + 1}"
+    def get_running_processes(self, limit=10, sort_by='cpu'):
+        """Получение списка запущенных процессов с исправленным парсингом"""
+        try:
+            # Определяем сортировку для ps
+            sort_key = {
+                'cpu': '-%cpu',
+                'memory': '-%mem'
+            }.get(sort_by, '-%cpu')
 
-        result = self.ssh.execute_command(command)
+            # Команда для получения процессов с правильными колонками
+            cmd = f"ps aux --sort={sort_key} --no-headers | head -{limit}"
 
-        processes = []
-        if result["success"]:
-            lines = result["output"].split('\n')[1:]  # Пропускаем заголовок
-            for line in lines[:limit]:
-                if line.strip():
-                    parts = line.split()
-                    if len(parts) >= 11:
-                        process = {
-                            "user": parts[0],
-                            "pid": int(parts[1]),
-                            "cpu_percent": float(parts[2]),
-                            "memory_percent": float(parts[3]),
-                            "command": ' '.join(parts[10:]),
-                            "start_time": parts[8]
-                        }
-                        processes.append(process)
+            result = self.ssh.execute_command(cmd)
 
-        return processes
+            if not result["success"]:
+                return []
+
+            processes = []
+            lines = result["output"].strip().split('\n')
+
+            for line in lines:
+                if not line.strip():
+                    continue
+
+                parts = line.split()
+                if len(parts) >= 11:
+                    try:
+                        user = parts[0]
+                        pid = parts[1]
+                        cpu_percent = float(parts[2])  # %CPU
+                        mem_percent = float(parts[3])  # %MEM
+                        # Остальные части - команда (может содержать пробелы)
+                        command = ' '.join(parts[10:])
+                        name = parts[10] if len(parts) > 10 else command.split('/')[-1][:20]
+
+                        # ФИЛЬТР: пропускаем процессы с явно некорректными значениями CPU
+                        if cpu_percent > 1000:  # Если значение > 1000% - явно некорректное
+                            print(f"⚠️ Пропущен процесс с некорректным CPU: {cpu_percent}%")
+                            continue
+
+                        # Ограничиваем значения разумными пределами
+                        cpu_percent = min(cpu_percent, 100.0)  # Максимум 100%
+                        mem_percent = min(mem_percent, 100.0)  # Максимум 100%
+
+                        processes.append({
+                            "name": name[:30],  # Ограничиваем длину имени
+                            "user": user,
+                            "cpu_percent": round(cpu_percent, 1),
+                            "memory_percent": round(mem_percent, 1),
+                            "pid": pid,
+                            "command": command[:50]  # Ограничиваем длину команды
+                        })
+                    except (ValueError, IndexError) as e:
+                        print(f"⚠️ Ошибка парсинга процесса: {line}, ошибка: {e}")
+                        continue
+
+            print(f"✅ Успешно получено {len(processes)} процессов, сортировка: {sort_by}")
+            return processes
+
+        except Exception as e:
+            print(f"❌ Ошибка получения процессов: {str(e)}")
+            return []
 
     def get_network_info(self) -> Dict:
         """Получение сетевой информации"""
@@ -228,28 +263,58 @@ class DiagnosticService:
 
         return results
 
-    def get_services_status(self) -> List[Dict]:
-        """Получение статуса системных сервисов"""
-        command = "systemctl list-units --type=service --state=running --no-pager"
-        result = self.ssh.execute_command(command)
+    def get_services_status(self):
+        """Получение статуса системных сервисов с улучшенным парсингом"""
+        try:
+            # Команда для получения статуса сервисов systemd
+            cmd = "systemctl list-units --type=service --all --no-pager --no-legend | head -20"
 
-        services = []
-        if result["success"]:
-            lines = result["output"].split('\n')
-            for line in lines[1:]:  # Пропускаем заголовок
-                if line.strip() and '●' not in line:  # Пропускаем строки с ошибками
-                    parts = line.split()
-                    if len(parts) >= 4:
-                        service = {
-                            "name": parts[0],
-                            "load": parts[1],
-                            "active": parts[2],
-                            "sub": parts[3],
-                            "description": ' '.join(parts[4:])
-                        }
-                        services.append(service)
+            result = self.ssh.execute_command(cmd)
 
-        return services
+            if not result["success"]:
+                return []
+
+            services = []
+            lines = result["output"].strip().split('\n')
+
+            for line in lines:
+                if not line.strip():
+                    continue
+
+                parts = line.split()
+                if len(parts) >= 4:
+                    service_name = parts[0]
+                    loaded = parts[1]
+                    active = parts[2]
+                    sub = parts[3]
+
+                    # Определяем статус на основе active и sub
+                    status = "stopped"
+                    if active == "active":
+                        if sub == "running":
+                            status = "running"
+                        else:
+                            status = "active"
+                    elif active == "failed":
+                        status = "failed"
+                    elif active == "inactive":
+                        status = "stopped"
+
+                    services.append({
+                        "name": service_name,
+                        "status": status,
+                        "description": " ".join(parts[4:]) if len(parts) > 4 else "Системный сервис",
+                        "loaded": loaded,
+                        "active": active,
+                        "sub": sub
+                    })
+
+            print(f"✅ Успешно получено {len(services)} сервисов")
+            return services
+
+        except Exception as e:
+            print(f"❌ Ошибка получения сервисов: {str(e)}")
+            return []
 
     def quick_diagnostic(self) -> Dict:
         """Быстрая диагностика системы"""

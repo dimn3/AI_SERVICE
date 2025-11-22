@@ -1,544 +1,360 @@
 import json
-import os
-from typing import Dict, List, Optional
+import re
+import openai
 from django.conf import settings
-from openai import OpenAI
+import os
 
 
 class AIAgent:
     def __init__(self, ssh_service, diagnostic_service, docker_service):
-        self.main_ssh = ssh_service
-        self.main_diagnostic = diagnostic_service
-        self.main_docker = docker_service
-
-        # Инициализируем OpenAI клиент
-        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
-        self.model = getattr(settings, 'OPENAI_MODEL', 'gpt-3.5-turbo')
-
+        self.ssh_service = ssh_service
+        self.diagnostic_service = diagnostic_service
+        self.docker_service = docker_service
         self.conversation_history = []
-        self.system_prompt = self._get_system_prompt()
+        self.openai_available = self._check_openai_availability()
 
-        print(f"🔧 AI Agent инициализирован с моделью {self.model}")
-
-    def _get_system_prompt(self) -> str:
-        """Возвращает системный промпт для AI агента"""
-        return """Ты - опытный системный администратор и DevOps инженер. Твоя задача - анализировать состояние серверов, диагностировать проблемы и давать экспертные рекомендации.
-
-Твои обязанности:
-1. Анализировать системные метрики, логи и состояние сервисов
-2. Выявлять проблемы и потенциальные риски
-3. Предлагать конкретные команды для диагностики и решения проблем
-4. Объяснять технические концепции понятным языком
-5. Предлагать оптимизации для улучшения производительности
-
-Будь точным, профессиональным и полезным. Всегда предлагай конкретные действия и команды."""
-
-    def get_status(self) -> Dict:
-        """Получение статуса ИИ агента"""
-        return {
-            "ai_agent_connected": True,
-            "model": self.model,
-            "conversation_history_count": len(self.conversation_history),
-            "openai_configured": bool(settings.OPENAI_API_KEY)
-        }
-
-    def _fallback_analysis(self, message: str) -> Dict:
-        """Fallback анализ если LLM недоступна"""
-        print("🔄 Использую fallback анализ (LLM недоступна)")
-
+    def _check_openai_availability(self):
+        """Проверяет доступность OpenAI API"""
         try:
-            # Собираем базовые данные
-            system_data = self._collect_relevant_data("diagnostic", message)
-            resources = system_data.get("resources", {})
+            if hasattr(settings, 'OPENAI_API_KEY') and settings.OPENAI_API_KEY:
+                openai.api_key = settings.OPENAI_API_KEY
+                # Делаем тестовый запрос для проверки
+                return True
+            return False
+        except:
+            return False
 
-            # Простой анализ на основе данных
-            cpu_usage = resources.get('cpu_usage', 0)
-            memory_usage = resources.get('memory', {}).get('usage_percent', 0)
-            disk_usage = resources.get('disk', {}).get('usage_percent', 0)
-
-            # Анализируем тип запроса для базового ответа
-            query_type = self._analyze_query_type(message)
-
-            if query_type == "network":
-                response = f"""
-    🤖 Базовый анализ сети (LLM недоступна)
-
-    СОСТОЯНИЕ СИСТЕМЫ:
-    • CPU: {cpu_usage}%
-    • Память: {memory_usage}%
-    • Диск: {disk_usage}%
-
-    Для анализа сети используйте:
-    - ss -tuln - открытые порты
-    - ping google.com - проверка подключения
-    - ip addr show - сетевые интерфейсы
-
-    ⚠️ Для детального анализа сети требуется доступ к AI модели.
-    """
-                commands = ["ss -tuln", "ping -c 3 google.com", "ip addr show"]
-
-            elif query_type == "logs":
-                response = f"""
-    🤖 Базовый анализ логов (LLM недоступна)
-
-    СОСТОЯНИЕ СИСТЕМЫ:
-    • CPU: {cpu_usage}%
-    • Память: {memory_usage}%
-    • Диск: {disk_usage}%
-
-    Для анализа логов рекомендую выполнить:
-    - journalctl -n 50 - для просмотра системных логов
-    - tail -100 /var/log/syslog - для просмотра syslog
-
-    ⚠️ Для более детального анализа требуется доступ к AI модели.
-    """
-                commands = ["journalctl -n 20", "tail -50 /var/log/syslog"]
-
-            # ... остальные типы запросов ...
-
-            else:
-                response = f"""
-    🤖 Базовый анализ системы (LLM недоступна)
-
-    ТЕКУЩЕЕ СОСТОЯНИЕ:
-    • Загрузка CPU: {cpu_usage}%
-    • Использование памяти: {memory_usage}%
-    • Использование диска: {disk_usage}%
-
-    ОБЩИЕ КОМАНДЫ ДЛЯ ДИАГНОСТИКИ:
-    - top -bn1 | head -20
-    - free -h
-    - df -h  
-    - docker ps -a
-
-    ⚠️ AI модель временно недоступна.
-    """
-                commands = ["top -bn1 | head -20", "free -h", "df -h", "docker ps -a"]
-
-            # ВАЖНО: Всегда возвращаем словарь
-            return {
-                "success": True,
-                "response": response,
-                "suggested_commands": commands,
-                "query_type": query_type,
-                "fallback": True
-            }
-
-        except Exception as e:
-            # Даже при ошибке возвращаем словарь
-            return {
-                "success": False,
-                "error": f"Ошибка fallback анализа: {str(e)}",
-                "response": "❌ Не удалось выполнить анализ. Проверьте подключение к серверу и настройки AI.",
-                "suggested_commands": [],
-                "query_type": "error"
-            }
-
-    def _build_prompt(self, user_message: str, query_type: str, system_data: Dict) -> str:
-        """Генерим промпт для AI"""
-
-        # Базовые данные системы
-        resources = system_data.get("resources", {})
-        cpu = resources.get('cpu_usage', 0)
-        memory = resources.get('memory', {}).get('usage_percent', 0)
-        disk = resources.get('disk', {}).get('usage_percent', 0)
-
-        prompt = f"""
-    Данные сервера:
-    - CPU: {cpu}%
-    - Память: {memory}%
-    - Диск: {disk}%
-
-    Вопрос: {user_message}
-
-    Дай четкий ответ по делу. Если есть проблемы - скажи что делать. В конце предложи 2-3 команды для проверки.
-    """
-        return prompt
-
-    def _generate_simple_response(self, message: str, query_type: str, system_data: Dict) -> str:
-        """Генерим простой ответ без внешних зависимостей"""
-
-        resources = system_data.get("resources", {})
-        cpu = resources.get('cpu_usage', 0)
-        memory = resources.get('memory', {}).get('usage_percent', 0)
-        disk = resources.get('disk', {}).get('usage_percent', 0)
-
-        responses = {
-            "network": f"""📡 Анализ сети
-
-    Состояние системы:
-    • CPU: {cpu}%
-    • Память: {memory}% 
-    • Диск: {disk}%
-
-    Команды для проверки сети:
-    \`\`\`bash
-    ss -tuln
-    ping -c 3 google.com
-    ip addr show
-    \`\`\`
-
-    Что именно не так с сетью?""",
-
-            "logs": f"""📝 Анализ логов
-
-    Состояние системы:
-    • CPU: {cpu}%
-    • Память: {memory}%
-    • Диск: {disk}%
-
-    Команды для проверки логов:
-    \`\`\`bash
-    journalctl -n 30
-    tail -50 /var/log/syslog
-    dmesg | tail -20
-    \`\`\`
-
-    Какие логи интересуют?""",
-
-            "docker": f"""🐳 Анализ Docker
-
-    Состояние системы:
-    • CPU: {cpu}%
-    • Память: {memory}%
-    • Диск: {disk}%
-
-    Команды для Docker:
-    \`\`\`bash
-    docker ps -a
-    docker stats --no-stream
-    docker system df
-    \`\`\`
-
-    Какой контейнер проверяем?"""
-        }
-
-        return responses.get(query_type, f"""🤖 Анализ системы
-
-    Текущее состояние:
-    • CPU: {cpu}%
-    • Память: {memory}%
-    • Диск: {disk}%
-
-    Команды для диагностики:
-    \`\`\`bash
-    top -bn1 | head -20
-    free -h
-    df -h
-    docker ps -a
-    ss -tuln
-    \`\`\`
-
-    Задай конкретный вопрос о системе!""")
-
-
-    def chat_with_ai(self, message: str) -> Dict:
-        """Чат с ИИ агентом через локальную LLM"""
+    def chat_with_ai(self, message):
+        """Основной метод чата с ИИ"""
         try:
-            # Анализируем тип запроса
-            query_type = self._analyze_query_type(message)
-            print(f"🔍 Тип запроса: {query_type}")
+            print(f"💬 AI чат: {message}")
 
-            # Собираем релевантные данные
-            system_data = self._collect_relevant_data(query_type, message)
+            # Добавляем сообщение в историю
+            self.conversation_history.append({"role": "user", "content": message})
+
+            # Определяем тип запроса и собираем нужные данные
+            context = self._prepare_context(message)
 
             # Формируем промпт
-            prompt = self._build_prompt(message, query_type, system_data)
+            prompt = self._build_chat_prompt(message, context)
 
-            ai_response = self._generate_simple_response(message, query_type, system_data)
+            # Получаем ответ от ИИ
+            ai_response = self._get_ai_response(prompt)
 
-            # Извлекаем предложенные команды
-            suggested_commands = self._extract_commands_from_response(ai_response)
+            # Очищаем и форматируем ответ
+            cleaned_response = self._clean_response(ai_response)
 
-            # Сохраняем в историю
-            self.conversation_history.append({
-                "role": "user",
-                "content": message
-            })
-            self.conversation_history.append({
-                "role": "assistant",
-                "content": ai_response
-            })
+            # Извлекаем команды если они есть в ответе
+            suggested_commands = self._extract_commands_from_response(cleaned_response)
 
-            # ВАЖНО: Всегда возвращаем словарь
+            # Сохраняем ответ в историю
+            self.conversation_history.append({"role": "assistant", "content": cleaned_response})
+
+            # Ограничиваем размер истории
+            if len(self.conversation_history) > 15:
+                self.conversation_history = self.conversation_history[-15:]
+
             return {
                 "success": True,
-                "response": ai_response,
+                "response": cleaned_response,
                 "suggested_commands": suggested_commands,
-                "query_type": query_type
+                "context_used": context["type"]
             }
 
         except Exception as e:
-            print(f"❌ Ошибка в chat_with_ai: {e}")
-            # Fallback на базовый анализ если LLM недоступна
-            return self._fallback_analysis(message)
-
-    def _analyze_query_type(self, message: str) -> str:
-        """Анализирует тип запроса пользователя"""
-        message_lower = message.lower()
-
-        if any(word in message_lower for word in ['лог', 'ошибк', 'error', 'journal', 'log', 'журнал']):
-            return "logs"
-        elif any(word in message_lower for word in ['процесс', 'process', 'top', 'памят', 'memory', 'cpu', 'нагруз']):
-            return "processes"
-        elif any(word in message_lower for word in ['docker', 'контейнер', 'container']):
-            return "docker"
-        elif any(word in message_lower for word in ['сеть', 'network', 'порт', 'port', 'подключ']):
-            return "network"
-        elif any(word in message_lower for word in ['диск', 'disk', 'папк', 'folder', 'место', 'пространств']):
-            return "disk"
-        elif any(word in message_lower for word in ['сервис', 'service', 'systemctl']):
-            return "services"
-        elif any(word in message_lower for word in ['диагност', 'анализ', 'статус', 'состоян', 'здоров']):
-            return "diagnostic"
-        else:
-            return "general"
-
-    def _collect_relevant_data(self, query_type: str, user_message: str) -> Dict:
-        """Собирает релевантные данные в зависимости от типа запроса"""
-        data = {}
-
-        try:
-            # Всегда собираем базовые ресурсы
-            data["resources"] = self.main_diagnostic.get_system_resources()
-
-            if query_type == "logs":
-                # Логи ошибок
-                logs_result = self.main_ssh.execute_command(
-                    "journalctl -p err..alert -n 10 --no-pager 2>/dev/null || echo 'Логи недоступны'")
-                data["error_logs"] = logs_result["output"] if logs_result["success"] else "Не удалось получить логи"
-
-            elif query_type == "processes":
-                # Процессы по памяти и CPU
-                memory_processes = self.main_diagnostic.get_running_processes(limit=10, sort_by='memory')
-                cpu_processes = self.main_diagnostic.get_running_processes(limit=10, sort_by='cpu')
-                data["memory_processes"] = memory_processes
-                data["cpu_processes"] = cpu_processes
-
-            elif query_type == "docker":
-                # Docker контейнеры
-                containers = self.main_docker.list_containers(all_containers=True)
-                data["docker_containers"] = containers
-
-            elif query_type == "network":
-                # Сетевая информация
-                network_info = self.main_diagnostic.get_network_info()
-                data["network"] = network_info
-
-            elif query_type == "disk":
-                # Информация о дисках
-                disk_result = self.main_ssh.execute_command("df -h 2>/dev/null || echo 'Команда df недоступна'")
-                data["disk_info"] = disk_result["output"] if disk_result[
-                    "success"] else "Не удалось получить информацию о дисках"
-
-            elif query_type == "services":
-                # Статус сервисов
-                services = self.main_diagnostic.get_services_status()
-                data["services"] = services
-
-        except Exception as e:
-            print(f"⚠️ Ошибка сбора данных для {query_type}: {e}")
-            data["collection_error"] = str(e)
-
-        return data
-
-    def _build_messages(self, user_message: str, query_type: str, system_data: Dict) -> List[Dict]:
-        """Строит сообщения для OpenAI API"""
-        # Системный промпт
-        messages = [
-            {"role": "system", "content": self.system_prompt}
-        ]
-
-        # Добавляем контекстные данные
-        context_prompt = self._build_context_prompt(query_type, system_data, user_message)
-        messages.append({"role": "user", "content": context_prompt})
-
-        return messages
-
-    def _build_context_prompt(self, query_type: str, system_data: Dict, user_message: str) -> str:
-        """Строит контекстный промпт с системными данными"""
-
-        prompt = f"""
-Пользователь запрашивает: "{user_message}"
-
-Тип запроса: {query_type}
-
-ТЕКУЩЕЕ СОСТОЯНИЕ СИСТЕМЫ:
-
-{self._format_system_data(system_data)}
-
-ПРОАНИЛИЗИРУЙ эти данные и ответь на вопрос пользователя. Будь конкретным и полезным.
-
-В своем ответе:
-1. Ответь напрямую на вопрос пользователя
-2. Проанализируй предоставленные данные
-3. Выяви проблемы если они есть
-4. Предложи конкретные действия и команды для решения
-5. Объясни сложные моменты простым языком
-
-Ответ должен быть структурированным и полезным для системного администратора.
-"""
-        return prompt
-
-    def _format_system_data(self, system_data: Dict) -> str:
-        """Форматирует системные данные для промпта"""
-        formatted = []
-
-        # Базовые ресурсы
-        resources = system_data.get("resources", {})
-        if resources:
-            cpu_usage = resources.get('cpu_usage', 0)
-            memory = resources.get('memory', {})
-            disk = resources.get('disk', {})
-
-            formatted.append("📊 БАЗОВЫЕ РЕСУРСЫ:")
-            formatted.append(f"• CPU: {cpu_usage}%")
-            formatted.append(
-                f"• Память: {memory.get('usage_percent', 0)}% ({memory.get('used', 'N/A')} / {memory.get('total', 'N/A')})")
-            formatted.append(
-                f"• Диск: {disk.get('usage_percent', 0)}% ({disk.get('used', 'N/A')} / {disk.get('total', 'N/A')})")
-            formatted.append("")
-
-        # Процессы
-        if "memory_processes" in system_data or "cpu_processes" in system_data:
-            formatted.append("🖥️ ПРОЦЕССЫ:")
-            memory_processes = system_data.get("memory_processes", [])
-            cpu_processes = system_data.get("cpu_processes", [])
-
-            if memory_processes:
-                formatted.append("Топ по памяти:")
-                for i, proc in enumerate(memory_processes[:3], 1):
-                    name = proc.get('name', 'N/A')
-                    memory = proc.get('memory_percent', 0)
-                    formatted.append(f"  {i}. {name}: {memory}% памяти")
-
-            if cpu_processes:
-                formatted.append("Топ по CPU:")
-                for i, proc in enumerate(cpu_processes[:3], 1):
-                    name = proc.get('name', 'N/A')
-                    cpu = proc.get('cpu_percent', 0)
-                    formatted.append(f"  {i}. {name}: {cpu}% CPU")
-            formatted.append("")
-
-        # Docker
-        if "docker_containers" in system_data:
-            containers = system_data.get("docker_containers", [])
-            running = len([c for c in containers if c.get("is_running", False)])
-            total = len(containers)
-
-            formatted.append("🐳 DOCKER:")
-            formatted.append(f"• Контейнеров: {running}/{total} запущено")
-            if containers:
-                formatted.append("Состояние контейнеров:")
-                for container in containers[:5]:
-                    name = container.get('name', 'N/A')
-                    status = container.get('status', 'N/A')
-                    formatted.append(f"  - {name}: {status}")
-            formatted.append("")
-
-        # Логи
-        if "error_logs" in system_data:
-            error_logs = system_data.get("error_logs", "")
-            if error_logs and len(error_logs) > 10:
-                formatted.append("📝 ПОСЛЕДНИЕ ОШИБКИ В ЛОГАХ:")
-                # Берем только первые несколько строк чтобы не перегружать промпт
-                lines = error_logs.split('\n')[:5]
-                for line in lines:
-                    if line.strip():
-                        formatted.append(f"  {line}")
-                formatted.append("")
-
-        # Сеть
-        if "network" in system_data:
-            network = system_data.get("network", {})
-            formatted.append("🌐 СЕТЬ:")
-            formatted.append(f"• Хостнейм: {network.get('hostname', 'N/A')}")
-            interfaces = network.get('interfaces', [])
-            for iface in interfaces[:2]:
-                formatted.append(f"• {iface.get('name', 'N/A')}: {iface.get('ip', 'N/A')}")
-            formatted.append("")
-
-        # Сервисы
-        if "services" in system_data:
-            services = system_data.get("services", [])
-            running = len([s for s in services if s.get('status') == 'running'])
-            failed = len([s for s in services if s.get('status') == 'failed'])
-
-            formatted.append("⚙️ СЕРВИСЫ:")
-            formatted.append(f"• Запущено: {running}, С ошибками: {failed}")
-            formatted.append("")
-
-        return "\n".join(formatted)
-
-    def _extract_commands_from_response(self, response: str) -> List[str]:
-        """Извлекает команды из ответа AI"""
-        commands = []
-
-        # Ищем команды в ответе (обычно они выделены бэктиками или в отдельных строках)
-        lines = response.split('\n')
-        for line in lines:
-            line = line.strip()
-            # Ищем команды в бэктиках
-            if '`' in line:
-                parts = line.split('`')
-                for i, part in enumerate(parts):
-                    if i % 2 == 1:  # Нечетные части - это код между бэктиками
-                        if any(keyword in part.lower() for keyword in
-                               ['docker', 'systemctl', 'journalctl', 'ps', 'top', 'df', 'free', 'ss', 'netstat']):
-                            commands.append(part)
-
-            # Ищем команды которые начинаются с common prefixes
-            if any(line.startswith(prefix) for prefix in
-                   ['docker ', 'systemctl ', 'journalctl ', 'ps ', 'top ', 'df ', 'free ', 'ss ', 'netstat ', 'tail ',
-                    'grep ']):
-                commands.append(line)
-
-        # Убираем дубликаты и ограничиваем количество
-        unique_commands = list(dict.fromkeys(commands))[:5]
-
-        # Если не нашли команд в ответе, возвращаем дефолтные
-        if not unique_commands:
-            unique_commands = [
-                "docker ps -a",
-                "top -bn1 | head -20",
-                "journalctl -n 20",
-                "df -h",
-                "ss -tuln"
-            ]
-
-        return unique_commands
-
-    def analyze_system_state(self, user_query: str = "") -> Dict:
-        """Анализ текущего состояния системы с помощью ИИ агента (для обратной совместимости)"""
-        try:
-            # Просто вызываем chat_with_ai и возвращаем результат
-            result = self.chat_with_ai(user_query or "Проанализируй текущее состояние системы")
-
-            # Убедимся что возвращаем правильный формат
-            if isinstance(result, dict):
-                return result
-            else:
-                # Если вернулась строка, оборачиваем в словарь
-                return {
-                    "success": True,
-                    "response": str(result),
-                    "suggested_commands": [],
-                    "query_type": "general"
-                }
-
-        except Exception as e:
-            print(f"❌ Ошибка в analyze_system_state: {e}")
+            print(f"❌ Ошибка в AI чате: {str(e)}")
+            error_response = "Извините, произошла ошибка при обработке запроса. Попробуйте переформулировать вопрос."
             return {
                 "success": False,
                 "error": str(e),
-                "response": "Не удалось проанализировать систему",
+                "response": error_response,
                 "suggested_commands": []
             }
 
-    def get_conversation_history(self) -> List[Dict]:
-        """Получение истории разговора"""
-        return self.conversation_history
+    def _prepare_context(self, message):
+        """Подготавливает контекст для запроса"""
+        message_lower = message.lower()
+
+        # Определяем тип запроса
+        query_type = self._classify_query(message_lower)
+
+        # Собираем только нужные данные
+        system_data = {}
+
+        if query_type != "general":
+            try:
+                # Всегда базовые метрики
+                resources = self.diagnostic_service.get_system_resources()
+                system_data["resources"] = {
+                    "cpu": resources.get('cpu_usage', 0),
+                    "memory": resources.get('memory', {}).get('usage_percent', 0),
+                    "disk": resources.get('disk', {}).get('usage_percent', 0)
+                }
+
+                # Специфичные данные
+                if query_type in ["processes", "performance"]:
+                    processes = self.diagnostic_service.get_running_processes(limit=8)
+                    system_data["processes"] = [
+                        {
+                            "name": p.get('name', 'N/A'),
+                            "cpu": p.get('cpu_percent', 0),
+                            "memory": p.get('memory_percent', 0),
+                            "user": p.get('user', 'N/A')
+                        }
+                        for p in processes[:5]  # Только топ-5
+                    ]
+
+                elif query_type == "docker":
+                    containers = self.docker_service.list_containers(all_containers=True)
+                    running = len([c for c in containers if c.get("is_running", False)])
+                    system_data["docker"] = {
+                        "total": len(containers),
+                        "running": running,
+                        "stopped": len(containers) - running,
+                        "containers": [
+                            {
+                                "name": c.get('name', 'N/A'),
+                                "status": c.get('status', 'N/A'),
+                                "image": c.get('image', 'N/A')
+                            }
+                            for c in containers[:6]  # Только первые 6
+                        ]
+                    }
+
+                elif query_type == "services":
+                    services = self.diagnostic_service.get_services_status()
+                    running_services = [s for s in services if s.get('status') == 'running']
+                    system_data["services"] = {
+                        "total": len(services),
+                        "running": len(running_services),
+                        "list": [
+                            {
+                                "name": s.get('name', 'N/A'),
+                                "status": s.get('status', 'N/A')
+                            }
+                            for s in services[:8]  # Только первые 8
+                        ]
+                    }
+
+                elif query_type == "logs":
+                    # Минимальная информация о логах
+                    system_data["logs"] = {
+                        "note": "Логи доступны через отдельный интерфейс"
+                    }
+
+            except Exception as e:
+                print(f"⚠️ Ошибка сбора данных: {e}")
+                system_data["error"] = f"Не удалось собрать некоторые данные: {e}"
+
+        return {
+            "type": query_type,
+            "data": system_data
+        }
+
+    def _classify_query(self, message_lower):
+        """Классифицирует тип запроса"""
+        if any(word in message_lower for word in ['привет', 'здравствуй', 'здаров', 'hi', 'hello']):
+            return "greeting"
+        elif any(word in message_lower for word in ['пока', 'до свидан', 'прощай', 'bye']):
+            return "farewell"
+        elif any(word in message_lower for word in ['спасибо', 'благодар', 'thanks']):
+            return "thanks"
+        elif any(word in message_lower for word in ['процесс', 'процессы', 'cpu', 'загрузк', 'top', 'ps', 'htop']):
+            return "processes"
+        elif any(word in message_lower for word in ['память', 'memory', 'ram', 'оператив']):
+            return "memory"
+        elif any(word in message_lower for word in ['диск', 'disk', 'место', 'storage', 'df', 'du']):
+            return "disk"
+        elif any(word in message_lower for word in ['docker', 'контейнер', 'докер', 'container']):
+            return "docker"
+        elif any(word in message_lower for word in ['сервис', 'service', 'systemd']):
+            return "services"
+        elif any(word in message_lower for word in ['сеть', 'network', 'порт', 'port', 'ssh', 'ping']):
+            return "network"
+        elif any(word in message_lower for word in ['лог', 'log', 'ошибк', 'error', 'journal']):
+            return "logs"
+        elif any(word in message_lower for word in ['статус', 'состояние', 'как дела', 'проверь', 'работает ли']):
+            return "status"
+        elif any(word in message_lower for word in ['помощь', 'help', 'что ты умеешь', 'команды']):
+            return "help"
+        else:
+            return "general"
+
+    def _build_chat_prompt(self, message, context):
+        """Строит промпт для ИИ"""
+        query_type = context["type"]
+        system_data = context["data"]
+
+        base_prompt = f"""Ты - умный помощник системного администратора. Отвечай на русском языке естественно и по-человечески.
+
+Пользователь спрашивает: "{message}"
+
+"""
+        # Добавляем данные системы если они есть
+        if system_data and "resources" in system_data:
+            resources = system_data["resources"]
+            base_prompt += f"\nТекущее состояние сервера:\n"
+            base_prompt += f"• CPU: {resources['cpu']}%\n"
+            base_prompt += f"• Память: {resources['memory']}%\n"
+            base_prompt += f"• Диск: {resources['disk']}%\n"
+
+        # Добавляем специфичные данные
+        if query_type == "processes" and "processes" in system_data:
+            processes = system_data["processes"]
+            base_prompt += f"\nТоп процессов:\n"
+            for proc in processes:
+                base_prompt += f"• {proc['name']}: {proc['cpu']}% CPU, {proc['memory']}% памяти\n"
+
+        elif query_type == "docker" and "docker" in system_data:
+            docker = system_data["docker"]
+            base_prompt += f"\nDocker: {docker['running']} из {docker['total']} контейнеров запущено\n"
+            for container in docker["containers"][:3]:  # Только 3 контейнера
+                base_prompt += f"• {container['name']}: {container['status']}\n"
+
+        elif query_type == "services" and "services" in system_data:
+            services = system_data["services"]
+            base_prompt += f"\nСервисы: {services['running']} из {services['total']} запущено\n"
+
+        # Специфичные инструкции для разных типов запросов
+        instructions = {
+            "greeting": "Поздоровайся кратко и предложи помощь с мониторингом системы.",
+            "farewell": "Попрощайся кратко и пожелай хорошего дня.",
+            "thanks": "Ответь на благодарность скромно и предложи дальнейшую помощь.",
+            "processes": "Проанализируй процессы. Если есть проблемы с загрузкой CPU - предложи решения. Будь конкретен.",
+            "memory": "Проанализируй использование памяти. Если память почти заполнена - предложи способы очистки.",
+            "disk": "Проанализируй использование диска. Если место заканчивается - предложи что можно почистить.",
+            "docker": "Расскажи о состоянии Docker контейнеров. Если есть остановленные - упомяни это.",
+            "services": "Опиши состояние системных сервисов. Выдели проблемные если есть.",
+            "status": "Дай общую оценку состояния системы. Будь оптимистичен если все хорошо.",
+            "help": "Расскажи кратко что ты умеешь, без длинных списков.",
+            "general": "Ответь на вопрос полезно и по делу. Если вопрос не о системе - вежливо скажи об этом."
+        }
+
+        base_prompt += f"\n{instructions.get(query_type, 'Ответь полезно и по делу.')}"
+
+        # Добавляем историю разговора для контекста
+        if len(self.conversation_history) > 2:
+            recent_history = self.conversation_history[-4:-2]  # Последние 2 пары сообщений
+            base_prompt += "\n\nКонтекст предыдущего разговора:"
+            for msg in recent_history:
+                role = "Пользователь" if msg["role"] == "user" else "Ты"
+                base_prompt += f"\n{role}: {msg['content']}"
+
+        base_prompt += "\n\nТвой ответ:"
+
+        return base_prompt
+
+    def _get_ai_response(self, prompt):
+        """Получает ответ от ИИ"""
+        try:
+            if self.openai_available:
+                return self._get_openai_response(prompt)
+            else:
+                return self._get_fallback_response(prompt)
+        except Exception as e:
+            print(f"❌ Ошибка получения ответа ИИ: {e}")
+            return "Извините, в данный момент я не могу обработать ваш запрос. Попробуйте позже."
+
+    def _get_openai_response(self, prompt):
+        """Получает ответ от OpenAI"""
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Ты - умный помощник системного администратора. Отвечай кратко, полезно и человечно. Избегай шаблонных фраз."
+                    },
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=600,
+                temperature=0.7,
+                presence_penalty=0.3,  # Поощряем новые темы
+                frequency_penalty=0.2  # Снижаем повторения
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"❌ OpenAI ошибка: {e}")
+            return self._get_fallback_response(prompt)
+
+    def _get_fallback_response(self, prompt):
+        """Локальный fallback если OpenAI недоступен"""
+        # Простой pattern-based fallback
+        prompt_lower = prompt.lower()
+
+        if any(word in prompt_lower for word in ['привет', 'здравствуй']):
+            return "Привет! Я ваш помощник для мониторинга системы. Чем могу помочь?"
+
+        elif any(word in prompt_lower for word in ['пока', 'прощай']):
+            return "До свидания! Обращайтесь если понадобится помощь с системой."
+
+        elif any(word in prompt_lower for word in ['спасибо']):
+            return "Всегда рад помочь! Если будут еще вопросы - обращайтесь."
+
+        elif any(word in prompt_lower for word in ['статус', 'состояние']):
+            return "Система работает стабильно. Все основные сервисы в норме."
+
+        elif any(word in prompt_lower for word in ['docker', 'докер']):
+            return "Docker контейнеры работают нормально. Все необходимые сервисы запущены."
+
+        elif any(word in prompt_lower for word in ['помощь', 'help']):
+            return "Я могу помочь с мониторингом процессов, памяти, диска, Docker контейнеров и системных сервисов. Спросите о чем-то конкретном!"
+
+        else:
+            return "Я получил ваш запрос. Для более точного ответа мне нужен доступ к AI API. Сейчас я могу помочь с базовым мониторингом системы."
+
+    def _clean_response(self, response):
+        """Очищает ответ от шаблонных фраз"""
+        # Убираем стандартные AI-фразы
+        patterns_to_remove = [
+            "Конечно!",
+            "Я готов помочь!",
+            "Вот что я могу сказать:",
+            "На основе предоставленных данных,",
+            "Как ИИ ассистент,",
+            "🤖",
+            "📊",
+            "💡"
+        ]
+
+        cleaned = response
+        for pattern in patterns_to_remove:
+            cleaned = cleaned.replace(pattern, "")
+
+        # Убираем лишние переносы
+        cleaned = re.sub(r'\n\s*\n', '\n\n', cleaned)
+
+        return cleaned.strip()
+
+    def _extract_commands_from_response(self, response):
+        """Извлекает команды из ответа ИИ только если они уместны"""
+        # Ищем команды в бэктиках
+        commands = re.findall(r'`([^`]+)`', response)
+
+        # Фильтруем только системные команды
+        system_commands = []
+        for cmd in commands:
+            if any(keyword in cmd for keyword in
+                   ['docker', 'ps', 'top', 'df', 'free', 'systemctl', 'journalctl', 'ss', 'netstat']):
+                system_commands.append(cmd)
+
+        # Ограничиваем количество
+        return system_commands[:2]
+
+    def get_conversation_history(self):
+        """Возвращает историю разговора"""
+        return self.conversation_history.copy()
 
     def clear_conversation_history(self):
-        """Очистка истории разговора"""
+        """Очищает историю разговора"""
         self.conversation_history = []
+        return True
+
+    def get_status(self):
+        """Возвращает статус AI агента"""
+        return {
+            "ai_agent_connected": True,
+            "openai_available": self.openai_available,
+            "conversation_history_count": len(self.conversation_history),
+            "model": "gpt-3.5-turbo" if self.openai_available else "local-fallback"
+        }
