@@ -1,0 +1,139 @@
+{% extends 'monitor/pretty_base.html' %}
+
+{% block title %}Системные логи - AI Monitor{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <h2 class="text-2xl font-bold text-gray-800 mb-2">📝 Системные логи</h2>
+
+    <div class="flex flex-wrap gap-4 items-center">
+        <div class="flex items-center space-x-2">
+            <span class="text-gray-600">Тип логов:</span>
+            <select onchange="updateLogsType(this.value)" class="border rounded px-3 py-1">
+                <option value="system" {% if log_type == 'system' %}selected{% endif %}>Системные</option>
+                <option value="docker" {% if log_type == 'docker' %}selected{% endif %}>Docker</option>
+            </select>
+        </div>
+
+        {% if log_type == 'docker' %}
+        <div class="flex items-center space-x-2">
+            <span class="text-gray-600">Контейнер:</span>
+            <select onchange="updateContainer(this.value)" class="border rounded px-3 py-1">
+                <option value="">Все контейнеры</option>
+                {% for container in containers_list %}
+                <option value="{{ container }}" {% if container_name == container %}selected{% endif %}>{{ container }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
+        <div class="flex items-center space-x-2">
+            <span class="text-gray-600">Строк:</span>
+            <select onchange="updateLines(this.value)" class="border rounded px-3 py-1">
+                <option value="10" {% if lines == 10 %}selected{% endif %}>10</option>
+                <option value="20" {% if lines == 20 %}selected{% endif %}>20</option>
+                <option value="50" {% if lines == 50 %}selected{% endif %}>50</option>
+                <option value="100" {% if lines == 100 %}selected{% endif %}>100</option>
+            </select>
+        </div>
+
+        <button onclick="location.reload()"
+                class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors text-sm">
+            <i class="fas fa-sync-alt mr-1"></i>Обновить
+        </button>
+    </div>
+</div>
+
+{% if not ssh_service.connected %}
+<div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+    <div class="flex items-center">
+        <i class="fas fa-exclamation-triangle text-yellow-500 mr-3"></i>
+        <div>
+            <h3 class="font-semibold text-yellow-800">SSH не подключен</h3>
+            <p class="text-yellow-700 text-sm">Логи недоступны без подключения к серверу</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if not success %}
+<div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+    <div class="flex items-center">
+        <i class="fas fa-exclamation-circle text-red-500 mr-3"></i>
+        <div>
+            <h3 class="font-semibold text-red-800">Ошибка загрузки логов</h3>
+            <p class="text-red-700 text-sm">{{ logs }}</p>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="bg-white rounded-xl shadow-sm border">
+    <div class="p-4 border-b bg-gray-50">
+        <div class="flex justify-between items-center">
+            <h3 class="font-semibold text-gray-800">
+                {% if log_type == 'system' %}
+                    📋 Системные логи ({{ lines }} строк)
+                {% else %}
+                    🐳 Docker логи
+                    {% if container_name %}({{ container_name }}){% else %}(демон){% endif %}
+                    ({{ lines }} строк)
+                {% endif %}
+            </h3>
+            <span class="text-sm text-gray-500">{% now "H:i:s" %}</span>
+        </div>
+    </div>
+
+    <div class="p-4">
+        <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-auto text-sm font-mono max-h-96">{{ logs|linebreaksbr }}</pre>
+    </div>
+
+    <div class="p-4 border-t bg-gray-50 flex justify-between items-center">
+        <span class="text-sm text-gray-500">
+            {% if log_type == 'system' %}
+                Системные логи • {{ lines }} строк
+            {% else %}
+                Docker логи • {% if container_name %}{{ container_name }}{% else %}демон{% endif %} • {{ lines }} строк
+            {% endif %}
+        </span>
+        <button onclick="copyLogs()"
+                class="bg-gray-600 text-white px-3 py-1 rounded text-sm hover:bg-gray-700 transition-colors">
+            <i class="fas fa-copy mr-1"></i>Копировать
+        </button>
+    </div>
+</div>
+{% endif %}
+
+<script>
+function updateLogsType(type) {
+    const url = new URL(window.location);
+    url.searchParams.set('type', type);
+    if (type === 'system') {
+        url.searchParams.delete('container');
+    }
+    window.location.href = url.toString();
+}
+
+function updateContainer(container) {
+    const url = new URL(window.location);
+    if (container) {
+        url.searchParams.set('container', container);
+    } else {
+        url.searchParams.delete('container');
+    }
+    window.location.href = url.toString();
+}
+
+function updateLines(lines) {
+    const url = new URL(window.location);
+    url.searchParams.set('lines', lines);
+    window.location.href = url.toString();
+}
+
+function copyLogs() {
+    const logsContent = document.querySelector('pre').textContent;
+    navigator.clipboard.writeText(logsContent).then(() => {
+        alert('Логи скопированы в буфер обмена');
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AI System Monitor{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Header -->
+    <nav class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="flex justify-between items-center py-4">
+                <h1 class="text-xl font-bold text-gray-800">🤖 AI System Monitor</h1>
+                <div class="flex items-center space-x-4">
+                    <span class="flex items-center space-x-2 text-sm {% if ssh_service.connected %}text-green-600{% else %}text-red-600{% endif %}">
+                        <i class="fas fa-circle text-xs"></i>
+                        <span>{% if ssh_service.connected %}Подключено{% else %}Не подключено{% endif %}</span>
+                    </span>
+                    <button onclick="location.reload()" class="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600">
+                        <i class="fas fa-sync-alt mr-1"></i>Обновить
+                    </button>
+                </div>
+            </div>
+
+            <!-- Navigation -->
+            <div class="flex space-x-1 pb-2 overflow-x-auto">
+                <a href="/pretty/dashboard/" class="px-3 py-2 rounded text-sm whitespace-nowrap {% if request.path == '/pretty/dashboard/' %}bg-blue-100 text-blue-700{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+                    <i class="fas fa-gauge mr-1"></i>Дашборд
+                </a>
+                <a href="/pretty/resources/" class="px-3 py-2 rounded text-sm whitespace-nowrap {% if request.path == '/pretty/resources/' %}bg-blue-100 text-blue-700{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+                    <i class="fas fa-microchip mr-1"></i>Ресурсы
+                </a>
+                <a href="/pretty/processes/" class="px-3 py-2 rounded text-sm whitespace-nowrap {% if request.path == '/pretty/processes/' %}bg-blue-100 text-blue-700{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+                    <i class="fas fa-list mr-1"></i>Процессы
+                </a>
+                <a href="/pretty/docker/" class="px-3 py-2 rounded text-sm whitespace-nowrap {% if request.path == '/pretty/docker/' %}bg-blue-100 text-blue-700{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+                    <i class="fab fa-docker mr-1"></i>Docker
+                </a>
+                <a href="/pretty/services/" class="px-3 py-2 rounded text-sm whitespace-nowrap {% if request.path == '/pretty/services/' %}bg-blue-100 text-blue-700{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+                    <i class="fas fa-cogs mr-1"></i>Сервисы
+                </a>
+                <a href="/pretty/logs/" class="px-3 py-2 rounded text-sm whitespace-nowrap {% if request.path == '/pretty/logs/' %}bg-blue-100 text-blue-700{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+                    <i class="fas fa-file-lines mr-1"></i>Логи
+                </a>
+                <a href="/ai-chat/" class="px-3 py-2 rounded text-sm whitespace-nowrap {% if request.path == '/ai-chat/' %}bg-blue-100 text-blue-700{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+                    <i class="fas fa-robot mr-1"></i>AI Ассистент
+                </a>
+                <!-- Добавь эти ссылки в навигацию -->
+                <a href="/pretty/ai/status/" class="px-3 py-2 rounded text-sm whitespace-nowrap {% if request.path == '/pretty/ai/status/' %}bg-blue-100 text-blue-700{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+                    <i class="fas fa-info-circle mr-1"></i>AI Статус
+                </a>
+                <a href="/pretty/ai/history/" class="px-3 py-2 rounded text-sm whitespace-nowrap {% if request.path == '/pretty/ai/history/' %}bg-blue-100 text-blue-700{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
+                    <i class="fas fa-history mr-1"></i>AI История
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto py-6 px-4">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script>
+    // Автообновление каждые 30 секунд
+    setTimeout(() => {
+        if (!window.location.pathname.includes('/ai-chat/')) {
+            location.reload();
+        }
+    }, 30000);
+    </script>
+</body>
+</html>

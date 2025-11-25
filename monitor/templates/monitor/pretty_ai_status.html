@@ -1,0 +1,96 @@
+{% extends 'monitor/pretty_base.html' %}
+
+{% block title %}Статус AI Агента - AI Monitor{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <h2 class="text-2xl font-bold text-gray-800 mb-2">🤖 Статус AI Агента</h2>
+    <p class="text-gray-600">Информация о подключении и настройках AI системы</p>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+    <!-- Статус подключения -->
+    <div class="bg-white rounded-lg shadow-sm border p-6">
+        <h3 class="text-lg font-semibold mb-4">🔌 Подключения</h3>
+        <div class="space-y-3">
+            <div class="flex justify-between items-center">
+                <span class="text-gray-600">SSH Сервер:</span>
+                <span class="flex items-center {% if connected %}text-green-600{% else %}text-red-600{% endif %}">
+                    <i class="fas fa-circle text-xs mr-2"></i>
+                    {% if connected %}Подключен{% else %}Не подключен{% endif %}
+                </span>
+            </div>
+            <div class="flex justify-between items-center">
+                <span class="text-gray-600">AI Агент:</span>
+                <span class="flex items-center {% if ai_connected %}text-green-600{% else %}text-red-600{% endif %}">
+                    <i class="fas fa-circle text-xs mr-2"></i>
+                    {% if ai_connected %}Активен{% else %}Неактивен{% endif %}
+                </span>
+            </div>
+            <div class="flex justify-between items-center">
+                <span class="text-gray-600">OpenAI:</span>
+                <span class="flex items-center {% if openai_available %}text-green-600{% else %}text-red-600{% endif %}">
+                    <i class="fas fa-circle text-xs mr-2"></i>
+                    {% if openai_available %}Доступен{% else %}Недоступен{% endif %}
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Информация о модели -->
+    <div class="bg-white rounded-lg shadow-sm border p-6">
+        <h3 class="text-lg font-semibold mb-4">🧠 AI Модель</h3>
+        <div class="space-y-3">
+            <div class="flex justify-between">
+                <span class="text-gray-600">Модель:</span>
+                <span class="font-semibold">{{ model }}</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-gray-600">История сообщений:</span>
+                <span class="font-semibold">{{ history_count }}</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-gray-600">Статус:</span>
+                <span class="font-semibold {% if openai_available %}text-green-600{% else %}text-yellow-600{% endif %}">
+                    {% if openai_available %}✅ Готов{% else %}⚠️ Локальный режим{% endif %}
+                </span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Действия -->
+<div class="bg-white rounded-lg shadow-sm border p-6">
+    <h3 class="text-lg font-semibold mb-4">⚡ Действия</h3>
+    <div class="flex flex-wrap gap-4">
+        <a href="/ai-chat/" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors">
+            <i class="fas fa-robot mr-2"></i>Чат с AI
+        </a>
+        <a href="/pretty/ai/history/" class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors">
+            <i class="fas fa-history mr-2"></i>История разговоров
+        </a>
+        <a href="/pretty/ai/docker/" class="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 transition-colors">
+            <i class="fab fa-docker mr-2"></i>Анализ Docker
+        </a>
+        <button onclick="clearHistory()" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors">
+            <i class="fas fa-trash mr-2"></i>Очистить историю
+        </button>
+    </div>
+</div>
+
+<script>
+function clearHistory() {
+    if (confirm('Очистить всю историю разговоров?')) {
+        fetch('/api/ai/clear-history/', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Ошибка: ' + data.error);
+                }
+            });
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,122 @@
+{% extends 'monitor/pretty_base.html' %}
+
+{% block title %}Системные сервисы - AI Monitor{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <h2 class="text-2xl font-bold text-gray-800 mb-2">⚙️ Системные сервисы</h2>
+    <p class="text-gray-600">
+        Всего сервисов: {{ total_count }},
+        запущено: {{ running_count }},
+        с ошибками: {{ failed_count }}
+    </p>
+</div>
+
+{% if not ssh_service.connected %}
+<div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+    <div class="flex items-center">
+        <i class="fas fa-exclamation-triangle text-yellow-500 mr-3"></i>
+        <div>
+            <h3 class="font-semibold text-yellow-800">SSH не подключен</h3>
+            <p class="text-yellow-700 text-sm">Данные могут быть неактуальными</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Статистика -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white rounded-lg shadow-sm border p-4 text-center">
+        <div class="text-2xl font-bold text-blue-600">{{ total_count }}</div>
+        <div class="text-sm text-blue-700">Всего</div>
+    </div>
+    <div class="bg-white rounded-lg shadow-sm border p-4 text-center">
+        <div class="text-2xl font-bold text-green-600">{{ running_count }}</div>
+        <div class="text-sm text-green-700">Запущено</div>
+    </div>
+    <div class="bg-white rounded-lg shadow-sm border p-4 text-center">
+        <div class="text-2xl font-bold text-red-600">{{ failed_count }}</div>
+        <div class="text-sm text-red-700">С ошибками</div>
+    </div>
+    <div class="bg-white rounded-lg shadow-sm border p-4 text-center">
+        <div class="text-2xl font-bold text-purple-600">
+            {% if total_count > 0 %}
+                {% widthratio running_count total_count 100 %}%
+            {% else %}
+                0%
+            {% endif %}
+        </div>
+        <div class="text-sm text-purple-700">Активность</div>
+    </div>
+</div>
+
+
+
+<!-- Таблица сервисов -->
+<div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left text-gray-700">
+            <thead class="bg-gray-100">
+                <tr>
+                    <th class="px-4 py-3 font-semibold">Сервис</th>
+                    <th class="px-4 py-3 font-semibold">Статус</th>
+                    <th class="px-4 py-3 font-semibold">Описание</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for service in services %}
+                <tr class="border-b hover:bg-gray-50">
+                    <td class="px-4 py-3 font-medium">
+                        <div class="flex items-center space-x-2">
+                            {% if service.status == 'running' %}
+                                <i class="fas fa-play text-green-500"></i>
+                            {% elif service.status == 'failed' %}
+                                <i class="fas fa-exclamation-triangle text-red-500"></i>
+                            {% else %}
+                                <i class="fas fa-stop text-gray-400"></i>
+                            {% endif %}
+                            <span>{{ service.name|default:"N/A" }}</span>
+                        </div>
+                    </td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 rounded text-xs font-medium
+                            {% if service.status == 'running' %}bg-green-100 text-green-800
+                            {% elif service.status == 'failed' %}bg-red-100 text-red-800
+                            {% else %}bg-gray-100 text-gray-800{% endif %}">
+                            {% if service.status == 'running' %}Запущен
+                            {% elif service.status == 'failed' %}Ошибка
+                            {% else %}Остановлен{% endif %}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-gray-600">
+                        {{ service.description|default:"Нет описания" }}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="3" class="px-4 py-8 text-center text-gray-500">
+                        <i class="fas fa-inbox text-3xl mb-2 text-gray-300"></i>
+                        <p>Сервисы не найдены</p>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Действия -->
+<div class="mt-6 bg-white rounded-xl shadow-sm p-6 border">
+    <h3 class="text-lg font-semibold mb-4">⚡ Действия</h3>
+    <div class="flex flex-wrap gap-4">
+        <button onclick="location.reload()"
+                class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors">
+            🔄 Обновить
+        </button>
+        <button onclick="window.location.href='/ai-chat/'"
+                class="bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition-colors">
+            🤖 AI Анализ сервисов
+        </button>
+    </div>
+</div>
+{% endblock %}

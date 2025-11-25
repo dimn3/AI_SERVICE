@@ -1,0 +1,129 @@
+{% extends 'monitor/pretty_base.html' %}
+
+{% block title %}Системные ресурсы - AI Monitor{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded-xl shadow-sm p-6 border">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold text-gray-800">🖥️ Процессор</h3>
+        <span class="text-2xl font-bold {% if cpu_usage > 80 %}text-red-600{% elif cpu_usage > 60 %}text-yellow-600{% else %}text-green-600{% endif %}">
+            {{ cpu_usage|default:0 }}%
+        </span>
+    </div>
+    <div class="w-full bg-gray-200 rounded-full h-3 mb-2">
+        <div class="cpu-progress-bar h-3 rounded-full transition-all duration-500
+            {% if cpu_usage > 80 %}bg-red-500{% elif cpu_usage > 60 %}bg-yellow-500{% else %}bg-blue-500{% endif %}"
+             style="width: {{ cpu_usage|default:0 }}%"></div>
+    </div>
+    <p class="text-sm text-gray-600">Использование процессора</p>
+</div>
+
+<!-- Память -->
+<div class="bg-white rounded-xl shadow-sm p-6 border">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold text-gray-800">💾 Память</h3>
+        <span class="text-2xl font-bold {% if memory.usage_percent > 80 %}text-red-600{% elif memory.usage_percent > 60 %}text-yellow-600{% else %}text-green-600{% endif %}">
+            {{ memory.usage_percent|default:0 }}%
+        </span>
+    </div>
+    <div class="w-full bg-gray-200 rounded-full h-3 mb-2">
+        <div class="memory-progress-bar h-3 rounded-full transition-all duration-500
+            {% if memory.usage_percent > 80 %}bg-red-500{% elif memory.usage_percent > 60 %}bg-yellow-500{% else %}bg-green-500{% endif %}"
+             style="width: {{ memory.usage_percent|default:0 }}%"></div>
+    </div>
+    <p class="text-sm text-gray-600">
+        {% if memory.used and memory.total %}
+            {{ memory.used }} / {{ memory.total }}
+        {% else %}
+            Данные недоступны
+        {% endif %}
+    </p>
+</div>
+
+<!-- Диск -->
+<div class="bg-white rounded-xl shadow-sm p-6 border">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold text-gray-800">💿 Диск</h3>
+        <span class="text-2xl font-bold {% if disk.usage_percent > 90 %}text-red-600{% elif disk.usage_percent > 80 %}text-yellow-600{% else %}text-green-600{% endif %}">
+            {{ disk.usage_percent|default:0 }}%
+        </span>
+    </div>
+    <div class="w-full bg-gray-200 rounded-full h-3 mb-2">
+        <div class="disk-progress-bar h-3 rounded-full transition-all duration-500
+            {% if disk.usage_percent > 90 %}bg-red-500{% elif disk.usage_percent > 80 %}bg-yellow-500{% else %}bg-purple-500{% endif %}"
+             style="width: {{ disk.usage_percent|default:0 }}%"></div>
+    </div>
+    <p class="text-sm text-gray-600">
+        {% if disk.used and disk.total %}
+            {{ disk.used }} / {{ disk.total }}
+        {% else %}
+            Данные недоступны
+        {% endif %}
+    </p>
+</div>
+
+<!-- Статус системы -->
+<div class="bg-white rounded-xl shadow-sm p-6 border">
+    <h3 class="text-lg font-semibold mb-4">📈 Статус системы</h3>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+        <div class="p-4 bg-gray-50 rounded-lg">
+            <div class="text-2xl font-bold {% if cpu_usage > 80 %}text-red-600{% elif cpu_usage > 60 %}text-yellow-600{% else %}text-green-600{% endif %}">
+                {{ cpu_usage }}%
+            </div>
+            <div class="text-sm text-gray-600">CPU</div>
+        </div>
+        <div class="p-4 bg-gray-50 rounded-lg">
+            <div class="text-2xl font-bold {% if memory.usage_percent > 80 %}text-red-600{% elif memory.usage_percent > 60 %}text-yellow-600{% else %}text-green-600{% endif %}">
+                {{ memory.usage_percent|default:"0" }}%
+            </div>
+            <div class="text-sm text-gray-600">Память</div>
+        </div>
+        <div class="p-4 bg-gray-50 rounded-lg">
+            <div class="text-2xl font-bold {% if disk.usage_percent > 90 %}text-red-600{% elif disk.usage_percent > 80 %}text-yellow-600{% else %}text-green-600{% endif %}">
+                {{ disk.usage_percent|default:"0" }}%
+            </div>
+            <div class="text-sm text-gray-600">Диск</div>
+        </div>
+        <div class="p-4 bg-gray-50 rounded-lg">
+            <div class="text-2xl font-bold {% if connected %}text-green-600{% else %}text-red-600{% endif %}">
+                {% if connected %}✅{% else %}❌{% endif %}
+            </div>
+            <div class="text-sm text-gray-600">SSH</div>
+        </div>
+    </div>
+</div>
+
+<!-- Действия -->
+<div class="mt-6 bg-white rounded-xl shadow-sm p-6 border">
+    <h3 class="text-lg font-semibold mb-4">⚡ Действия</h3>
+    <div class="flex flex-wrap gap-4">
+        <button onclick="window.location.reload()"
+                class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors">
+            🔄 Обновить
+        </button>
+        <button onclick="window.location.href='/processes/'"
+                class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors">
+            📊 Процессы
+        </button>
+        <button onclick="window.location.href='/docker/'"
+                class="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 transition-colors">
+            🐳 Docker
+        </button>
+        <button onclick="window.location.href='/ai-chat/'"
+                class="bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition-colors">
+            🤖 AI Анализ
+        </button>
+    </div>
+</div>
+
+<!-- Отладочная информация (можно убрать потом) -->
+<div class="mt-6 bg-gray-100 rounded-xl p-4 border">
+    <h4 class="font-semibold mb-2">🔧 Отладочная информация:</h4>
+    <pre class="text-xs bg-white p-3 rounded border overflow-auto max-h-40">
+CPU: {{ cpu_usage }}
+Memory: {{ memory|default:"{}" }}
+Disk: {{ disk|default:"{}" }}
+Connected: {{ connected }}
+    </pre>
+</div>
+{% endblock %}

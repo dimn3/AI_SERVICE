@@ -1,0 +1,110 @@
+{% extends 'monitor/pretty_base.html' %}
+
+{% block title %}Docker Контейнеры - AI Monitor{% endblock %}
+
+{% block content %}
+<<div class="mb-6">
+    <h2 class="text-2xl font-bold text-gray-800 mb-2">🐳 Docker Контейнеры</h2>
+    <p class="text-gray-600">
+        Всего контейнеров: {{ total_count }},
+        запущено: {{ running_count }},
+        остановлено: {{ stopped_count }}
+    </p>
+</div>
+
+{% if not ssh_service.connected %}
+<div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+    <div class="flex items-center">
+        <i class="fas fa-exclamation-triangle text-yellow-500 mr-3"></i>
+        <div>
+            <h3 class="font-semibold text-yellow-800">SSH не подключен</h3>
+            <p class="text-yellow-700 text-sm">Данные могут быть неактуальными</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+    {% for container in containers %}
+    <div class="bg-white rounded-lg shadow-sm border hover:shadow-md transition-shadow">
+        <div class="p-4 border-b">
+            <div class="flex justify-between items-start mb-2">
+                <h3 class="font-semibold text-gray-800 truncate" title="{{ container.name }}">
+                    {{ container.name }}
+                </h3>
+                <span class="flex items-center text-sm {% if container.is_running %}text-green-600{% else %}text-red-600{% endif %}">
+                    <i class="fas fa-circle text-xs mr-1"></i>
+                    {% if container.is_running %}Running{% else %}Stopped{% endif %}
+                </span>
+            </div>
+            <p class="text-sm text-gray-600 truncate" title="{{ container.image }}">
+                {{ container.image }}
+            </p>
+        </div>
+
+        <div class="p-4 space-y-2">
+            <div class="flex justify-between text-sm">
+                <span class="text-gray-500">ID:</span>
+                <span class="font-mono text-gray-700">{{ container.id|slice:":12" }}</span>
+            </div>
+            <div class="flex justify-between text-sm">
+                <span class="text-gray-500">Статус:</span>
+                <span class="text-gray-700">{{ container.status }}</span>
+            </div>
+            {% if container.ports %}
+            <div class="flex justify-between text-sm">
+                <span class="text-gray-500">Порты:</span>
+                <span class="text-gray-700 text-right">{{ container.ports|truncatechars:30 }}</span>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="p-4 border-t bg-gray-50 flex justify-between items-center">
+            <span class="text-xs text-gray-500">Контейнер</span>
+            <div class="flex space-x-2">
+                {% if container.is_running %}
+                <span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded">Запущен</span>
+                {% else %}
+                <span class="bg-red-100 text-red-800 text-xs px-2 py-1 rounded">Остановлен</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="col-span-full text-center py-12">
+        <i class="fas fa-box-open text-4xl text-gray-300 mb-4"></i>
+        <h3 class="text-lg font-semibold text-gray-600">Контейнеры не найдены</h3>
+        <p class="text-gray-500">Docker контейнеры не обнаружены на сервере</p>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Статистика -->
+<div class="mt-8 bg-white rounded-lg shadow-sm border p-6">
+    <h3 class="text-lg font-semibold mb-4">📊 Статистика Docker</h3>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+        <div class="p-4 bg-blue-50 rounded-lg">
+            <div class="text-2xl font-bold text-blue-600">{{ total_count }}</div>
+            <div class="text-sm text-blue-700">Всего</div>
+        </div>
+        <div class="p-4 bg-green-50 rounded-lg">
+            <div class="text-2xl font-bold text-green-600">{{ running_count }}</div>
+            <div class="text-sm text-green-700">Запущено</div>
+        </div>
+        <div class="p-4 bg-red-50 rounded-lg">
+            <div class="text-2xl font-bold text-red-600">{{ stopped_count }}</div>
+            <div class="text-sm text-red-700">Остановлено</div>
+        </div>
+        <div class="p-4 bg-purple-50 rounded-lg">
+            <div class="text-2xl font-bold text-purple-600">
+                {% if total_count > 0 %}
+                    {% widthratio running_count total_count 100 %}%
+                {% else %}
+                    0%
+                {% endif %}
+            </div>
+            <div class="text-sm text-purple-700">Активность</div>
+        </div>
+    </div>
+</div>
+{% endblock %}

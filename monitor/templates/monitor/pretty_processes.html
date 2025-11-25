@@ -1,0 +1,60 @@
+{% extends 'monitor/base.html' %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto p-6">
+    <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+        <div class="bg-gradient-to-r from-green-600 to-blue-600 text-white p-6">
+            <h1 class="text-2xl font-bold">🖥️ Системные процессы</h1>
+            <p class="text-blue-100">Всего процессов: {{ total }}</p>
+        </div>
+
+        <div class="p-6">
+            <!-- Фильтры -->
+            <div class="flex space-x-4 mb-6">
+                <a href="?sort_by=cpu&limit=10"
+                   class="px-4 py-2 rounded-lg {% if sort_by == 'cpu' %}bg-blue-500 text-white{% else %}bg-gray-200 text-gray-700{% endif %}">
+                    🔥 По CPU
+                </a>
+                <a href="?sort_by=memory&limit=10"
+                   class="px-4 py-2 rounded-lg {% if sort_by == 'memory' %}bg-blue-500 text-white{% else %}bg-gray-200 text-gray-700{% endif %}">
+                    💾 По памяти
+                </a>
+            </div>
+
+            <!-- Таблица процессов -->
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left text-gray-700">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="px-4 py-2">Процесс</th>
+                            <th class="px-4 py-2">Пользователь</th>
+                            <th class="px-4 py-2">CPU %</th>
+                            <th class="px-4 py-2">Память %</th>
+                            <th class="px-4 py-2">PID</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for proc in processes %}
+                        <tr class="border-b hover:bg-gray-50">
+                            <td class="px-4 py-2 font-medium">{{ proc.name|default:"N/A" }}</td>
+                            <td class="px-4 py-2 text-gray-600">{{ proc.user|default:"N/A" }}</td>
+                            <td class="px-4 py-2">
+                                <span class="{% if proc.cpu_percent > 10 %}text-red-600 font-bold{% elif proc.cpu_percent > 5 %}text-yellow-600{% else %}text-green-600{% endif %}">
+                                    {{ proc.cpu_percent|default:0 }}%
+                                </span>
+                            </td>
+                            <td class="px-4 py-2">
+                                <span class="{% if proc.memory_percent > 10 %}text-red-600 font-bold{% elif proc.memory_percent > 5 %}text-yellow-600{% else %}text-green-600{% endif %}">
+                                    {{ proc.memory_percent|default:0 }}%
+                                </span>
+                            </td>
+                            <td class="px-4 py-2 text-gray-500">{{ proc.pid|default:"N/A" }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
